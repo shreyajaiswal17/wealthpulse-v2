@@ -5,6 +5,8 @@ from core.redis import init_redis
 from api.portfolio import router as portfolio_router
 from workers.amfi_cron import scheduler
 from workers.binance_ws import binance_price_worker
+from workers.finnhub_ws import finnhub_price_worker
+from workers.india_stocks import india_stocks_worker
 
 app = FastAPI(title="WealthPulse API v2")
 
@@ -20,6 +22,8 @@ app.add_middleware(
 async def startup():
     await init_redis()
     asyncio.create_task(binance_price_worker())
+    asyncio.create_task(finnhub_price_worker())
+    asyncio.create_task(india_stocks_worker())
     scheduler.start()
     print("WealthPulse v2 started")
 
