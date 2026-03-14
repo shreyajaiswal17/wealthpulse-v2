@@ -10,7 +10,8 @@ SYMBOLS = ["AAPL", "GOOGL", "MSFT", "TSLA", "AMZN", "NVDA"]
 FINNHUB_KEY = os.getenv("FINNHUB_API_KEY")
 
 async def finnhub_price_worker():
-    from core.redis import redis_client
+    from core.redis import get_redis
+    redis_client = await get_redis()
     uri = f"wss://ws.finnhub.io?token={FINNHUB_KEY}"
     print("🔄 Connecting to Finnhub WebSocket...")
 

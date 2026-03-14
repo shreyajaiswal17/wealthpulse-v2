@@ -5,7 +5,8 @@ import websockets
 COINS = ["btcusdt", "ethusdt", "solusdt", "bnbusdt", "adausdt", "dogeusdt"]
 
 async def binance_price_worker():
-    from core.redis import redis_client  # import here, after init_redis() has run
+    from core.redis import get_redis
+    redis_client = await get_redis()
     streams = "/".join(f"{c}@ticker" for c in COINS)
     uri = f"wss://stream.binance.com:9443/stream?streams={streams}"
     print("🔄 Connecting to Binance WebSocket...")

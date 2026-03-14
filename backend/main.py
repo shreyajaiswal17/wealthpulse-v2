@@ -3,6 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from core.redis import init_redis
 from api.portfolio import router as portfolio_router
+from api.stream import router as stream_router
 from workers.amfi_cron import scheduler
 from workers.binance_ws import binance_price_worker
 from workers.finnhub_ws import finnhub_price_worker
@@ -28,6 +29,7 @@ async def startup():
     print("WealthPulse v2 started")
 
 app.include_router(portfolio_router)
+app.include_router(stream_router)
 
 @app.get("/")
 async def root():

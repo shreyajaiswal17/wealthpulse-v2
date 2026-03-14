@@ -8,7 +8,8 @@ SYMBOLS = [
 ]
 
 async def india_stocks_worker():
-    from core.redis import redis_client
+    from core.redis import get_redis
+    redis_client = await get_redis()
     print("🔄 Starting India stocks polling worker (60s interval)...")
 
     while True:
