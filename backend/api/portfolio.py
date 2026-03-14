@@ -6,6 +6,7 @@ from core.database import get_db
 from core.security import get_current_user
 from models.holding import Holding
 from schemas.portfolio import HoldingCreate, HoldingResponse
+from workers.amfi_cron import parse_and_store_navs
 
 router = APIRouter(prefix="/api/portfolio", tags=["Portfolio"])
 
@@ -47,3 +48,9 @@ async def remove_holding(
     if result.rowcount == 0:
         raise HTTPException(status_code=404, detail="Holding not found")
     return {"message": "Removed"}
+
+
+@router.post("/test-nav-refresh")
+async def test_nav_refresh():
+    await parse_and_store_navs()
+    return {"message": "NAV refresh triggered"}

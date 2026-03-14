@@ -3,6 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from core.redis import init_redis
 from api.portfolio import router as portfolio_router
+from workers.amfi_cron import scheduler, parse_and_store_navs
 
 app = FastAPI(title="WealthPulse API v2")
 
@@ -17,6 +18,7 @@ app.add_middleware(
 @app.on_event("startup")
 async def startup():
     await init_redis()
+    scheduler.start()
     print("WealthPulse v2 started")
 
 app.include_router(portfolio_router)
