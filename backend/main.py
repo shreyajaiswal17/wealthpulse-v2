@@ -2,6 +2,7 @@ import asyncio
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from core.redis import init_redis
+from api.portfolio import router as portfolio_router
 
 app = FastAPI(title="WealthPulse API v2")
 
@@ -17,6 +18,8 @@ app.add_middleware(
 async def startup():
     await init_redis()
     print("WealthPulse v2 started")
+
+app.include_router(portfolio_router)
 
 @app.get("/")
 async def root():
