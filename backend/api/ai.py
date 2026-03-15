@@ -1,16 +1,19 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from core.database import get_db
 from core.security import get_current_user
 from services.ai import call_ai
 from services.prompt_builder import build_dost_prompt, build_report_prompt
 from api.analytics import portfolio_analytics
+from core.limiter import limiter
 
 router = APIRouter(prefix="/api/ai", tags=["AI"])
 
 
 @router.get("/dost")
+@limiter.limit("10/minute")
 async def ai_dost(
+    request: Request,
     user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -24,7 +27,9 @@ async def ai_dost(
 
 
 @router.get("/report")
+@limiter.limit("5/minute")
 async def ai_report(
+    request: Request,
     user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
