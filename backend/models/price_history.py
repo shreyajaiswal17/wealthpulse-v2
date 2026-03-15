@@ -1,6 +1,7 @@
 from sqlalchemy import Column, Text, Numeric, Date
 from core.database import Base
 
+
 class PriceHistory(Base):
     __tablename__ = "price_history"
     symbol      = Column(Text, primary_key=True)
