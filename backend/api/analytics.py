@@ -8,6 +8,7 @@ from core.security import get_current_user
 from core.redis import get_redis
 from models.holding import Holding
 from models.price_history import PriceHistory
+from models.snapshot import PortfolioSnapshot
 from services.analytics import calc_pnl, xirr, calc_risk_metrics, monte_carlo, numpy_to_python
 
 router = APIRouter(prefix="/api/analytics", tags=["Analytics"])
@@ -112,3 +113,33 @@ async def portfolio_analytics(
         },
         "holdings": holdings_data,
     })
+
+
+@router.get("/history")
+async def portfolio_history(
+    user=Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(PortfolioSnapshot)
+        .where(PortfolioSnapshot.user_id == user["sub"])
+        .order_by(PortfolioSnapshot.snapshot_date)
+        .limit(365)
+    )
+    snapshots = result.scalars().all()
+    return [
+        {
+            "date": str(s.snapshot_date),
+            "total_value": float(s.total_value),
+            "total_invested": float(s.total_cost),
+            "pnl": float(s.total_value - s.total_cost),
+        }
+        for s in snapshots
+    ]
+
+
+@router.post("/test-snapshot")
+async def test_snapshot():
+    from workers.amfi_cron import take_daily_snapshot
+    await take_daily_snapshot()
+    return {"message": "Snapshot triggered"}

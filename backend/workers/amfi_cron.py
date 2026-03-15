@@ -1,7 +1,12 @@
+import asyncio
 import httpx
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from sqlalchemy import text
-from core.database import AsyncSessionLocal
+from sqlalchemy import text, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from datetime import date
+from core.database import AsyncSessionLocal, get_db
+from models.snapshot import PortfolioSnapshot
+from models.holding import Holding
 
 scheduler = AsyncIOScheduler(timezone="Asia/Kolkata")
 
@@ -62,3 +67,43 @@ async def parse_and_store_navs():
 @scheduler.scheduled_job("cron", hour="10,14,18,21", minute=10)
 async def scheduled_nav_refresh():
     await parse_and_store_navs()
+
+
+async def take_daily_snapshot():
+    async for db in get_db():
+        try:
+            result = await db.execute(select(Holding))
+            holdings = result.scalars().all()
+
+            user_totals = {}
+            for h in holdings:
+                uid = h.user_id
+                invested = float(h.buy_price) * float(h.quantity)
+                current = invested  # fallback — Redis lookup optional here
+                user_totals.setdefault(uid, {"invested": 0, "value": 0})
+                user_totals[uid]["invested"] += invested
+                user_totals[uid]["value"] += current
+
+            for uid, totals in user_totals.items():
+                stmt = pg_insert(PortfolioSnapshot).values(
+                    user_id=uid,
+                    snapshot_date=date.today(),
+                    total_value=totals["value"],
+                    total_cost=totals["invested"],
+                ).on_conflict_do_nothing()
+                await db.execute(stmt)
+
+            await db.commit()
+            print("✅ Daily snapshot saved")
+        except Exception as e:
+            print(f"⚠️ Snapshot error: {e}")
+        break
+
+
+scheduler.add_job(
+    lambda: asyncio.create_task(take_daily_snapshot()),
+    "cron",
+    hour=23,
+    minute=55,
+    id="daily_snapshot"
+)
