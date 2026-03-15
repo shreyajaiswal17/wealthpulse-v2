@@ -6,6 +6,7 @@ from core.database import get_db
 from api.portfolio import router as portfolio_router
 from api.stream import router as stream_router
 from api.analytics import router as analytics_router
+from api.market import router as market_router
 from workers.amfi_cron import scheduler
 from workers.binance_ws import binance_price_worker
 from workers.finnhub_ws import finnhub_price_worker
@@ -42,6 +43,7 @@ async def startup():
 app.include_router(portfolio_router)
 app.include_router(stream_router)
 app.include_router(analytics_router)
+app.include_router(market_router)
 
 @app.get("/")
 async def root():

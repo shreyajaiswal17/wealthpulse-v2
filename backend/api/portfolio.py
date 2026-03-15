@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, delete
+from sqlalchemy import select, delete, text
 from typing import List
 from core.database import get_db
 from core.security import get_current_user
@@ -54,3 +54,37 @@ async def remove_holding(
 async def test_nav_refresh():
     await parse_and_store_navs()
     return {"message": "NAV refresh triggered"}
+
+
+@router.post("/backfill-nav/{scheme_code}")
+async def backfill_nav(scheme_code: str, db: AsyncSession = Depends(get_db)):
+    import httpx
+    from datetime import datetime
+    from sqlalchemy import text
+
+    async with httpx.AsyncClient() as client:
+        r = await client.get(f"https://api.mfapi.in/mf/{scheme_code}", timeout=15)
+
+    nav_history = r.json().get("data", [])
+
+    rows = []
+    for entry in nav_history:
+        try:
+            date = datetime.strptime(entry["date"], "%d-%m-%Y").date()
+            nav = float(entry["nav"])
+            rows.append({"s": scheme_code, "d": date, "p": nav})
+        except Exception:
+            continue
+
+    if rows:
+        await db.execute(
+            text("""
+                INSERT INTO price_history (symbol, asset_type, price_date, close_price)
+                VALUES (:s, 'mutualfund', :d, :p)
+                ON CONFLICT (symbol, "price_date") DO NOTHING
+            """),
+            rows
+        )
+        await db.commit()
+
+    return {"scheme_code": scheme_code, "inserted": len(rows)}
