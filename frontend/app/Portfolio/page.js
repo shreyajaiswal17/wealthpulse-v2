@@ -16,6 +16,13 @@ export default function PortfolioPage() {
   const [riskVolatility, setRiskVolatility] = useState({});
   const [monteCarlo, setMonteCarlo] = useState({});
 
+  // Buy history modal state
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [selectedSymbol, setSelectedSymbol] = useState(null);
+  const [historyData, setHistoryData] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [selectedItem, setSelectedItem] = useState(null);
+
   // Function to calculate aggregate portfolio metrics
   const calculatePortfolioMetrics = useCallback(async () => {
     if (!portfolioItems.length) return;
@@ -173,6 +180,91 @@ export default function PortfolioPage() {
     }
   };
 
+  const handleViewHistory = async (symbol, name) => {
+    if (!isSignedIn || !user) {
+      alert("Please sign in to view holding history");
+      return;
+    }
+
+    try {
+      setHistoryLoading(true);
+      setSelectedSymbol({ symbol, name });
+
+      // Find the portfolio item to get current_price
+      const item = portfolioItems.find((p) => p.symbol === symbol);
+      setSelectedItem(item);
+
+      const response = await fetch(
+        `/api/backend/portfolio/history/${encodeURIComponent(symbol)}`,
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch holding history");
+      }
+
+      const data = await response.json();
+      setHistoryData(data);
+      setShowHistoryModal(true);
+    } catch (err) {
+      console.error("Error fetching history:", err);
+      alert("Failed to load buy history. Please try again.");
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  const handleDeleteLot = async (lotId) => {
+    if (!window.confirm("Are you sure you want to delete this lot?")) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/backend/portfolio/${lotId}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to delete lot");
+      }
+
+      // Remove from history
+      setHistoryData((prev) => prev.filter((lot) => lot.id !== lotId));
+
+      // Refetch portfolio items to update the aggregated card
+      const analyticsResponse = await fetch(
+        "/api/backend/analytics/portfolio",
+        {
+          cache: "no-store",
+        },
+      );
+
+      if (analyticsResponse.ok) {
+        const analytics = await analyticsResponse.json();
+        const itemsWithMetrics = analytics.holdings.map((holding) => ({
+          id: holding.id,
+          symbol: holding.symbol,
+          name: holding.name,
+          item_type:
+            holding.asset_type === "mutualfund"
+              ? "mutual_fund"
+              : holding.asset_type,
+          quantity: holding.quantity,
+          buy_price: holding.buy_price,
+          current_price: holding.current_price,
+          risk_volatility: holding.risk || {},
+          montecarlo: holding.montecarlo || {},
+          _backendHolding: holding,
+        }));
+        setPortfolioItems(itemsWithMetrics);
+      }
+
+      alert("Lot deleted successfully!");
+    } catch (err) {
+      console.error("Error deleting lot:", err);
+      alert("Failed to delete lot. Please try again.");
+    }
+  };
+
   if (!isSignedIn && !isLoading) {
     return (
       <div className="min-h-screen py-12 px-4 bg-linear-to-b from-[#050511] via-[#0d1020] to-[#0b0b12]">
@@ -263,7 +355,8 @@ export default function PortfolioPage() {
             {portfolioItems.map((item) => (
               <div
                 key={item.id}
-                className="bg-white/5 rounded-lg p-6 border border-white/10"
+                onClick={() => handleViewHistory(item.symbol, item.name)}
+                className="bg-white/5 rounded-lg p-6 border border-white/10 cursor-pointer hover:bg-white/10 hover:border-white/20 transition-all duration-200"
               >
                 <div className="flex justify-between items-start mb-4">
                   <div>
@@ -314,7 +407,7 @@ export default function PortfolioPage() {
                       ).toLocaleString("en-IN", { maximumFractionDigits: 2 })}
                     </span>
                   </div>
-                  {item.current_price != null && (
+                  {item.current_price != null && item.current_price > 0 && (
                     <>
                       <div className="flex justify-between">
                         <span className="text-gray-400">Current Price:</span>
@@ -329,13 +422,39 @@ export default function PortfolioPage() {
                         <span className="text-gray-400">Current Value:</span>
                         <span className="text-white font-medium">
                           ₹
-                          {(
-                            Number(item.quantity ?? 0) *
-                            Number(item.current_price)
-                          ).toLocaleString("en-IN", {
-                            maximumFractionDigits: 2,
-                          })}
+                          {Number(item.current_value || 0).toLocaleString(
+                            "en-IN",
+                            {
+                              maximumFractionDigits: 2,
+                            },
+                          )}
                         </span>
+                      </div>
+                      <div className="flex justify-between bg-white/10 rounded px-3 py-2">
+                        <span className="text-gray-300 font-medium">P&L:</span>
+                        <div className="text-right">
+                          <div
+                            className={`font-bold text-lg ${(item._backendHolding?.pnl ?? 0) >= 0 ? "text-green-400" : "text-red-400"}`}
+                          >
+                            {(item._backendHolding?.pnl ?? 0) >= 0 ? "+" : ""}₹
+                            {Number(
+                              item._backendHolding?.pnl ?? 0,
+                            ).toLocaleString("en-IN", {
+                              maximumFractionDigits: 2,
+                            })}
+                          </div>
+                          <div
+                            className={`text-sm font-semibold ${(item._backendHolding?.pnl_pct ?? 0) >= 0 ? "text-green-300" : "text-red-300"}`}
+                          >
+                            {(item._backendHolding?.pnl_pct ?? 0) >= 0
+                              ? "+"
+                              : ""}
+                            {Number(item._backendHolding?.pnl_pct ?? 0).toFixed(
+                              2,
+                            )}
+                            %
+                          </div>
+                        </div>
                       </div>
                     </>
                   )}
@@ -404,6 +523,242 @@ export default function PortfolioPage() {
           }}
           useBackend={true}
         />
+
+        {/* Buy History Modal */}
+        {showHistoryModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-[#181f31] rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto border border-gray-700">
+              <div className="sticky top-0 bg-[#181f31] border-b border-gray-700 p-6 flex justify-between items-center">
+                <div>
+                  <h2 className="text-2xl font-bold text-white">Buy History</h2>
+                  <p className="text-gray-400">
+                    {selectedSymbol?.name} ({selectedSymbol?.symbol})
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowHistoryModal(false)}
+                  className="text-gray-400 hover:text-white text-2xl"
+                >
+                  ×
+                </button>
+              </div>
+
+              {historyLoading ? (
+                <div className="flex justify-center items-center py-12">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
+                </div>
+              ) : (
+                <div className="p-6">
+                  {/* Aggregated Summary */}
+                  {historyData.length > 0 && (
+                    <div className="bg-white/5 rounded-lg p-4 mb-6 border border-white/10">
+                      <h3 className="text-white font-semibold mb-4">
+                        Aggregated Summary
+                      </h3>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div>
+                          <div className="text-gray-400 text-sm">
+                            Total Quantity
+                          </div>
+                          <div className="text-white font-bold text-lg">
+                            {historyData
+                              .reduce(
+                                (sum, lot) => sum + Number(lot.quantity || 0),
+                                0,
+                              )
+                              .toLocaleString("en-IN", {
+                                maximumFractionDigits: 8,
+                              })}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-gray-400 text-sm">
+                            Total Invested
+                          </div>
+                          <div className="text-green-400 font-bold text-lg">
+                            ₹
+                            {historyData
+                              .reduce(
+                                (sum, lot) =>
+                                  sum +
+                                  Number(lot.quantity || 0) *
+                                    Number(lot.buy_price || 0),
+                                0,
+                              )
+                              .toLocaleString("en-IN", {
+                                maximumFractionDigits: 2,
+                              })}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-gray-400 text-sm">
+                            Avg Buy Price
+                          </div>
+                          <div className="text-white font-bold text-lg">
+                            ₹
+                            {(
+                              historyData.reduce(
+                                (sum, lot) =>
+                                  sum +
+                                  Number(lot.quantity || 0) *
+                                    Number(lot.buy_price || 0),
+                                0,
+                              ) /
+                              (historyData.reduce(
+                                (sum, lot) => sum + Number(lot.quantity || 0),
+                                0,
+                              ) || 1)
+                            ).toLocaleString("en-IN", {
+                              maximumFractionDigits: 4,
+                            })}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-gray-400 text-sm">
+                            Current Value
+                          </div>
+                          <div className="text-blue-400 font-bold text-lg">
+                            ₹
+                            {(selectedItem?.current_price &&
+                            selectedItem.current_price > 0
+                              ? historyData.reduce(
+                                  (sum, lot) => sum + Number(lot.quantity || 0),
+                                  0,
+                                ) * selectedItem.current_price
+                              : selectedItem?.current_value || 0
+                            ).toLocaleString("en-IN", {
+                              maximumFractionDigits: 2,
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="mt-4 pt-4 border-t border-white/10">
+                        {(() => {
+                          const totalInvested = historyData.reduce(
+                            (sum, lot) =>
+                              sum +
+                              Number(lot.quantity || 0) *
+                                Number(lot.buy_price || 0),
+                            0,
+                          );
+                          const currentValue =
+                            selectedItem?.current_price &&
+                            selectedItem.current_price > 0
+                              ? historyData.reduce(
+                                  (sum, lot) => sum + Number(lot.quantity || 0),
+                                  0,
+                                ) * selectedItem.current_price
+                              : selectedItem?.current_value || 0;
+                          const pnl = currentValue - totalInvested;
+                          const pnlPct =
+                            totalInvested > 0 ? (pnl / totalInvested) * 100 : 0;
+                          const isProfitable = pnl >= 0;
+
+                          return (
+                            <div className="flex justify-between items-center">
+                              <span className="text-gray-300 font-medium">
+                                Profit / Loss:
+                              </span>
+                              <div className="text-right">
+                                <div
+                                  className={`font-bold text-2xl ${isProfitable ? "text-green-400" : "text-red-400"}`}
+                                >
+                                  {isProfitable ? "+" : ""}₹
+                                  {Math.abs(pnl).toLocaleString("en-IN", {
+                                    maximumFractionDigits: 2,
+                                  })}
+                                </div>
+                                <div
+                                  className={`text-sm font-semibold ${isProfitable ? "text-green-300" : "text-red-300"}`}
+                                >
+                                  {isProfitable ? "+" : ""}
+                                  {pnlPct.toFixed(2)}%
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Lot Details Table */}
+                  <h3 className="text-white font-semibold mb-4">
+                    Individual Lots
+                  </h3>
+                  {historyData.length > 0 ? (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-gray-700">
+                            <th className="text-left py-3 px-4 text-gray-400 font-medium">
+                              Buy Date
+                            </th>
+                            <th className="text-right py-3 px-4 text-gray-400 font-medium">
+                              Quantity
+                            </th>
+                            <th className="text-right py-3 px-4 text-gray-400 font-medium">
+                              Buy Price
+                            </th>
+                            <th className="text-right py-3 px-4 text-gray-400 font-medium">
+                              Invested
+                            </th>
+                            <th className="text-center py-3 px-4 text-gray-400 font-medium">
+                              Action
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {historyData.map((lot) => (
+                            <tr
+                              key={lot.id}
+                              className="border-b border-gray-700 hover:bg-white/5"
+                            >
+                              <td className="py-3 px-4 text-white">
+                                {new Date(lot.buy_date).toLocaleDateString()}
+                              </td>
+                              <td className="text-right py-3 px-4 text-white">
+                                {Number(lot.quantity).toLocaleString("en-IN", {
+                                  maximumFractionDigits: 8,
+                                })}
+                              </td>
+                              <td className="text-right py-3 px-4 text-white">
+                                ₹
+                                {Number(lot.buy_price).toLocaleString("en-IN", {
+                                  maximumFractionDigits: 4,
+                                })}
+                              </td>
+                              <td className="text-right py-3 px-4 text-green-400">
+                                ₹
+                                {(
+                                  Number(lot.quantity) * Number(lot.buy_price)
+                                ).toLocaleString("en-IN", {
+                                  maximumFractionDigits: 2,
+                                })}
+                              </td>
+                              <td className="text-center py-3 px-4">
+                                <button
+                                  onClick={() => handleDeleteLot(lot.id)}
+                                  className="text-red-400 hover:text-red-300 text-sm font-medium transition-colors"
+                                >
+                                  Delete
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="text-center py-6 text-gray-400">
+                      No buy history found
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

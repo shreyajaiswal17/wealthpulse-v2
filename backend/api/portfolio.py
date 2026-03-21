@@ -23,6 +23,30 @@ async def get_portfolio(
     return result.scalars().all()
 
 
+@router.get("/history/{symbol}", response_model=List[HoldingResponse])
+async def get_symbol_history(
+    symbol: str,
+    user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Returns all buy lots for a given symbol for the current user.
+    Used by the portfolio card click to show buy history modal.
+    """
+    result = await db.execute(
+        select(Holding)
+        .where(
+            Holding.user_id == user["sub"],
+            Holding.symbol.ilike(symbol),
+        )
+        .order_by(Holding.buy_date, Holding.created_at)
+    )
+    rows = result.scalars().all()
+    if not rows:
+        raise HTTPException(status_code=404, detail=f"No history found for {symbol}")
+    return rows
+
+
 @router.post("", response_model=HoldingResponse, status_code=201)
 async def add_holding(
     item: HoldingCreate,

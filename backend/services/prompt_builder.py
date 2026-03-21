@@ -33,38 +33,64 @@ You speak in a warm, clear tone — like a knowledgeable friend, not a banker.
 Give practical, actionable advice. Use INR where relevant. Be concise (max 200 words)."""
 
     # Extract direct keys from summary
-    total_invested = portfolio_summary.get("total_invested", 0)
-    total_current = portfolio_summary.get("total_current_value", 0)
-    total_pnl = portfolio_summary.get("total_pnl", 0)
-    total_pnl_pct = portfolio_summary.get("total_pnl_pct", 0)
+    total_invested = float(portfolio_summary.get("total_invested", 0) or 0)
+    total_current = float(portfolio_summary.get("total_current_value", 0) or 0)
+    total_pnl = float(portfolio_summary.get("total_pnl", 0) or 0)
+    total_pnl_pct = float(portfolio_summary.get("total_pnl_pct", 0) or 0)
 
-    # Get aggregated metrics from holdings
+    # Get portfolio-level risk metrics (computed from enriched summary)
+    sharpe_ratio = float(portfolio_summary.get("sharpe_ratio", 0) or 0)
+    volatility = float(portfolio_summary.get("volatility", 0) or 0)
+    max_drawdown = float(portfolio_summary.get("max_drawdown", 0) or 0)
+    monte_carlo_median = float(portfolio_summary.get("monte_carlo_median", 0) or 0)
+
+    # Get enriched holdings
     holdings = portfolio_summary.get("holdings", [])
-    metrics = _aggregate_holdings_metrics(holdings)
+    holdings_count = len(holdings)
+    asset_types = portfolio_summary.get("asset_types", [])
 
     # Determine portfolio state
-    has_single_asset = len(holdings) == 1
     has_basic_metrics = total_invested > 0 and total_current > 0
 
-    # Build metrics display section
-    metrics_section = f"""- Total Invested: ₹{total_invested:,.0f}
+    # Build overall metrics section
+    overall_section = f"""**Overall Portfolio:**
+- Total Invested: ₹{total_invested:,.0f}
 - Current Value: ₹{total_current:,.0f}
 - Total P&L: ₹{total_pnl:,.0f} ({total_pnl_pct:.1f}%)
-- Avg XIRR: {metrics['avg_xirr']:.1f}%
-- Avg Sharpe Ratio: {metrics['avg_sharpe']:.2f}
-- Avg Volatility: {metrics['avg_volatility']:.1f}%
-- Monte Carlo Expected 1yr Value: ₹{metrics['mc_p50_median']:,.0f}
-- Holdings: {len(holdings)} assets"""
+- XIRR: {float(portfolio_summary.get('xirr', 0) or 0):.1f}%
+- Sharpe Ratio: {sharpe_ratio:.2f}
+- Volatility: {volatility:.1f}%
+- Max Drawdown: {max_drawdown:.1f}%
+- Monte Carlo median 1yr value: ₹{monte_carlo_median:,.0f}
+- Holdings: {holdings_count} assets across {', '.join(asset_types) if asset_types else 'various types'}"""
+
+    # Build top holdings section if holdings exist
+    top_holdings_section = ""
+    if holdings:
+        top_holdings = holdings[:5]  # Top 5 by allocation
+        holdings_lines = []
+        for h in top_holdings:
+            symbol = h.get("symbol", "N/A")
+            name = h.get("name", symbol)
+            allocation = float(h.get("allocation_pct", 0) or 0)
+            pnl_pct = float(h.get("pnl_pct", 0) or 0)
+            xirr = float(h.get("xirr", 0) or 0)
+            sharpe = float(h.get("sharpe", 0) or 0)
+            risk_vol = float(h.get("volatility", 0) or 0)
+            holdings_lines.append(
+                f"- {name} ({symbol}): {allocation:.1f}% allocation, {pnl_pct:.1f}% P&L, {xirr:.1f}% XIRR, Sharpe {sharpe:.2f}, Volatility {risk_vol:.1f}%"
+            )
+        top_holdings_text = "\n".join(holdings_lines)
+        top_holdings_section = f"\n\n**Top Holdings (by allocation):**\n{top_holdings_text}"
 
     # Add note if risk metrics are zero but portfolio is real
     risk_note = ""
-    if has_basic_metrics and (metrics['avg_xirr'] == 0 or metrics['avg_sharpe'] == 0 or metrics['avg_volatility'] == 0):
-        risk_note = "\n\nNote: Some advanced metrics like XIRR and Sharpe Ratio are 0.0 right now, which usually just means there isn't enough historical data yet, not that your portfolio is empty."
+    if has_basic_metrics and (sharpe_ratio == 0 or volatility == 0 or max_drawdown == 0):
+        risk_note = "\n\nNote: Some advanced metrics are 0.0 right now, which usually means there isn't enough historical price data yet, not a problem with your portfolio."
 
-    user = f"""Here is the user's portfolio summary:
-{metrics_section}{risk_note}
+    user = f"""{overall_section}{top_holdings_section}{risk_note}
 
-Give a brief, friendly analysis and 2-3 actionable suggestions."""
+Give a brief, friendly analysis of the overall portfolio and comment on the most important holdings (top 3-5 by allocation or risk). Then give 2-3 actionable suggestions."""
 
     return system, user
 
@@ -74,58 +100,79 @@ def build_report_prompt(portfolio_summary: dict) -> tuple[str, str]:
 Use markdown formatting with headers. Be data-driven and objective. Max 400 words."""
 
     # Extract direct keys from summary
-    total_invested = portfolio_summary.get("total_invested", 0)
-    total_current = portfolio_summary.get("total_current_value", 0)
-    total_pnl = portfolio_summary.get("total_pnl", 0)
-    total_pnl_pct = portfolio_summary.get("total_pnl_pct", 0)
+    total_invested = float(portfolio_summary.get("total_invested", 0) or 0)
+    total_current = float(portfolio_summary.get("total_current_value", 0) or 0)
+    total_pnl = float(portfolio_summary.get("total_pnl", 0) or 0)
+    total_pnl_pct = float(portfolio_summary.get("total_pnl_pct", 0) or 0)
 
-    # Get aggregated metrics from holdings
+    # Get portfolio-level risk metrics (computed from enriched summary)
+    sharpe_ratio = float(portfolio_summary.get("sharpe_ratio", 0) or 0)
+    volatility = float(portfolio_summary.get("volatility", 0) or 0)
+    max_drawdown = float(portfolio_summary.get("max_drawdown", 0) or 0)
+    monte_carlo_median = float(portfolio_summary.get("monte_carlo_median", 0) or 0)
+
+    # Get enriched holdings
     holdings = portfolio_summary.get("holdings", [])
-    metrics = _aggregate_holdings_metrics(holdings)
-
-    # Build holdings breakdown
-    holdings_lines = []
-    for h in holdings:
-        pnl_pct = h.get("pnl", {}).get("pnl_pct", 0)
-        invested = h.get("pnl", {}).get("invested", 0)
-        current = h.get("pnl", {}).get("current_value", 0)
-        symbol = h.get("name", h.get("symbol"))
-        asset_type = h.get("asset_type", "")
-        holdings_lines.append(
-            f"- {symbol} ({asset_type}): invested ₹{invested:,.0f}, current ₹{current:,.0f}, P&L {pnl_pct:.1f}%"
-        )
-    holdings_text = "\n".join(holdings_lines) if holdings_lines else "(No holdings data)"
+    asset_types = portfolio_summary.get("asset_types", [])
 
     # Determine portfolio state
     has_real_investment = total_invested > 0
-    has_limited_data = (metrics['avg_xirr'] == 0 or metrics['avg_sharpe'] == 0 or
-                       metrics['avg_volatility'] == 0 or metrics['mc_p50_median'] == 0)
+    has_limited_data = (sharpe_ratio == 0 or volatility == 0 or max_drawdown == 0 or monte_carlo_median == 0)
+
+    # Build comprehensive holdings breakdown
+    holdings_lines = []
+    for h in holdings:
+        symbol = h.get("symbol", "N/A")
+        name = h.get("name", symbol)
+        assettype = h.get("assettype", "unknown")
+        allocation = float(h.get("allocation_pct", 0) or 0)
+        pnl_pct = float(h.get("pnl_pct", 0) or 0)
+        pnl_abs = float(h.get("pnl_abs", 0) or 0)
+        xirr = float(h.get("xirr", 0) or 0)
+        sharpe = float(h.get("sharpe", 0) or 0)
+        risk_vol = float(h.get("volatility", 0) or 0)
+        mdd = float(h.get("max_drawdown", 0) or 0)
+        mc_p50 = float(h.get("monte_carlo_p50", 0) or 0)
+
+        holdings_lines.append(
+            f"- **{name}** ({symbol}, {assettype}): {allocation:.1f}% allocation, {pnl_pct:.1f}% P&L (₹{pnl_abs:,.0f}), XIRR {xirr:.1f}%, Sharpe {sharpe:.2f}, Volatility {risk_vol:.1f}%, Max DD {mdd:.1f}%, MC median ₹{mc_p50:,.0f}"
+        )
+    holdings_text = "\n".join(holdings_lines) if holdings_lines else "(No holdings data)"
 
     # Build conditional text blocks
     portfolio_status = ""
     if has_real_investment:
-        portfolio_status = f"""Your portfolio shows an initial investment of ₹{total_invested:,.0f} with a current value of ₹{total_current:,.0f}, representing a total P&L of ₹{total_pnl:,.0f} ({total_pnl_pct:.1f}%)."""
+        portfolio_status = f"Initial investment of ₹{total_invested:,.0f} with current value ₹{total_current:,.0f}, representing a total P&L of ₹{total_pnl:,.0f} ({total_pnl_pct:.1f}%)."
     else:
-        portfolio_status = "Your portfolio currently has no active investments or is entirely in cash."
+        portfolio_status = "No active investments or entirely in cash."
 
     risk_note = ""
     if has_limited_data:
-        risk_note = "\n\n**Data Availability Note:** Some predictive and risk metrics are 0.0, which usually means there isn't enough historical price data yet. This does not indicate a portfolio problem."
+        risk_note = "\n\n**Data Note:** Some predictive and risk metrics are 0.0, usually due to insufficient historical price data. This does not indicate a portfolio problem."
 
-    user = f"""Generate a portfolio health report based on:
+    user = f"""Generate a detailed portfolio health report with these metrics:
+
+**Overall Summary**
 - Total Invested: ₹{total_invested:,.0f}
 - Current Value: ₹{total_current:,.0f}
 - Total P&L: ₹{total_pnl:,.0f} ({total_pnl_pct:.1f}%)
-- Avg XIRR: {metrics['avg_xirr']:.1f}%
-- Avg Sharpe Ratio: {metrics['avg_sharpe']:.2f}
-- Avg Volatility: {metrics['avg_volatility']:.1f}%
-- Monte Carlo Expected 1yr Value: ₹{metrics['mc_p50_median']:,.0f}
+- Portfolio XIRR: {float(portfolio_summary.get('xirr', 0) or 0):.1f}%
+- Sharpe Ratio: {sharpe_ratio:.2f}
+- Volatility: {volatility:.1f}%
+- Max Drawdown: {max_drawdown:.1f}%
+- Monte Carlo 1yr Median: ₹{monte_carlo_median:,.0f}
+- Asset types: {', '.join(asset_types) if asset_types else 'various'}
 
 **Portfolio Status:** {portfolio_status}
 
-HOLDINGS BREAKDOWN:
+**Holdings Breakdown** (with allocation %, P&L %, XIRR, Sharpe, volatility, max drawdown, Monte Carlo median):
 {holdings_text}{risk_note}
 
-Structure with: Executive Summary (investment status and P&L), Risk Assessment (volatility, Sharpe, diversification), Growth Outlook (XIRR trends and Monte Carlo insights), and Recommendations (actionable next steps)."""
+Write a markdown report with sections:
+1. **Executive Summary** — Overall investment status and performance
+2. **Allocation & Diversification** — Asset distribution and diversification analysis
+3. **Risk Assessment** — Discuss volatility, Sharpe ratio, max drawdown, and diversification benefits
+4. **Performance by Asset** — Mention specific stocks, mutual funds, and cryptos with their individual P&L and XIRR
+5. **Growth Outlook & Recommendations** — Discuss Monte Carlo insights and provide 2-3 actionable suggestions"""
 
     return system, user

@@ -58,6 +58,17 @@ async def portfolio_analytics(
     user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    """
+    Returns aggregated portfolio analytics.
+
+    Holdings with the same (symbol, assettype) are aggregated:
+    - Quantities summed
+    - Buy prices weighted-averaged
+    - XIRR computed from ALL lots for that symbol
+    - Risk metrics and Monte Carlo computed per aggregated symbol
+    """
+    from collections import defaultdict
+
     redis = await get_redis()
 
     result = await db.execute(
@@ -65,33 +76,51 @@ async def portfolio_analytics(
     )
     holdings = result.scalars().all()
 
+    # Group by (symbol, assettype)
+    grouped = defaultdict(list)
+    for h in holdings:
+        key = (h.symbol, h.asset_type)
+        grouped[key].append(h)
+
     total_invested = 0
     total_current = 0
     holdings_data = []
 
-    for h in holdings:
-        current_price = await get_current_price(h.symbol, h.asset_type, redis)
-        buy_price = float(h.buy_price)
-        quantity = float(h.quantity)
-        if current_price is None:
-            current_price = buy_price
+    for (symbol, assettype), lots in grouped.items():
+        # Aggregate metrics across all lots
+        total_qty = sum(float(h.quantity) for h in lots)
+        total_lot_invested = sum(float(h.buy_price) * float(h.quantity) for h in lots)
+        avg_buy_price = (total_lot_invested / total_qty) if total_qty > 0 else 0
 
-        pnl = calc_pnl(buy_price, current_price, quantity)
+        # Get current price (single lookup per symbol)
+        current_price = await get_current_price(symbol, assettype, redis)
+        if current_price is None or current_price <= 0:
+            current_price = avg_buy_price
 
-        buy_date = h.buy_date if isinstance(h.buy_date, date) else date.fromisoformat(str(h.buy_date))
-        cf = [(buy_date, -(buy_price * quantity)), (date.today(), pnl["current_value"])]
-        holding_xirr = xirr(cf)
+        # Calculate aggregated P&L
+        pnl = calc_pnl(avg_buy_price, current_price, total_qty)
 
-        # fetch price series FIRST (before cache check)
-        price_series = await get_price_series(h.symbol, db)
+        # Build XIRR cashflows from ALL lots
+        cashflows = []
+        for lot in lots:
+            lot_buydate = lot.buy_date if isinstance(lot.buy_date, date) else date.fromisoformat(str(lot.buy_date))
+            lot_invested = float(lot.buy_price) * float(lot.quantity)
+            cashflows.append((lot_buydate, -lot_invested))
+
+        # Add final cashflow: current value at today
+        cashflows.append((date.today(), pnl["current_value"]))
+        holding_xirr = xirr(cashflows)
+
+        # Fetch price series (same logic as before)
+        price_series = await get_price_series(symbol, db)
         if len(price_series) < 2:
-            price_series = [buy_price, current_price]
+            price_series = [avg_buy_price, current_price]
 
-        # risk metrics (always computed fresh)
+        # Risk metrics (computed fresh)
         risk = calc_risk_metrics(price_series)
 
-        # Monte Carlo (cached)
-        mc_cache_key = f"mc:{h.id}"
+        # Monte Carlo (cached per symbol+assettype)
+        mc_cache_key = f"mc:{symbol}:{assettype}"
         cached_mc = await redis.get(mc_cache_key)
         if cached_mc:
             mc = json.loads(cached_mc)
@@ -102,13 +131,14 @@ async def portfolio_analytics(
         total_invested += pnl["invested"]
         total_current += pnl["current_value"]
 
+        # Build aggregated holding record (use first lot's ID as representative)
         holdings_data.append({
-            "id": str(h.id),
-            "symbol": h.symbol,
-            "name": h.name,
-            "asset_type": h.asset_type,
-            "quantity": h.quantity,
-            "buy_price": h.buy_price,
+            "id": str(lots[0].id),
+            "symbol": symbol,
+            "name": lots[0].name,
+            "asset_type": assettype,
+            "quantity": round(total_qty, 8),  # Round to avoid float precision issues
+            "buy_price": round(avg_buy_price, 4),
             "current_price": current_price,
             **pnl,
             "xirr": holding_xirr,
