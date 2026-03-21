@@ -54,9 +54,31 @@ def _nav_df(series: list[dict]) -> pd.DataFrame:
 
 def _risk_metrics(df: pd.DataFrame) -> dict:
     returns = df["returns"].dropna()
+
+    # Need at least 2 returns to calculate std() with ddof=1
+    if len(returns) < 2:
+        return {
+            "annualized_volatility": 0.0,
+            "annualized_return": 0.0,
+            "sharpe_ratio": 0.0,
+            "returns": [],
+        }
+
     ann_vol = float(returns.std() * (252 ** 0.5))
     ann_ret = float((returns.mean() + 1) ** 252 - 1)
+
+    # Handle NaN values from calculations
+    if np.isnan(ann_vol):
+        ann_vol = 0.0
+    if np.isnan(ann_ret):
+        ann_ret = 0.0
+
     sharpe = float((ann_ret - 0.06) / ann_vol) if ann_vol > 0 else 0.0
+
+    # Handle NaN in sharpe
+    if np.isnan(sharpe):
+        sharpe = 0.0
+
     return {
         "annualized_volatility": ann_vol,
         "annualized_return": ann_ret,

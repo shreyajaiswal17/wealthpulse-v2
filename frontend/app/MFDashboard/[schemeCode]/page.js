@@ -153,33 +153,49 @@ export default function MFDetailsPage() {
 
   useEffect(() => {
     setLoading(true);
+
+    const handleResponse = async (response, endpointName) => {
+      if (!response.ok) {
+        throw new Error(
+          `${endpointName} failed: ${response.status} ${response.statusText}`,
+        );
+      }
+      return response.json();
+    };
+
     Promise.all([
       fetch(
         `${process.env.NEXT_PUBLIC_API_URL}/api/mutual/scheme-details/${schemeCode}`,
-      ).then((r) => r.json()),
+      ).then((r) => handleResponse(r, "scheme-details")),
       fetch(
         `${process.env.NEXT_PUBLIC_API_URL}/api/mutual/historical-nav/${schemeCode}`,
-      ).then((r) => r.json()),
+      ).then((r) => handleResponse(r, "historical-nav")),
       fetch(
         `${process.env.NEXT_PUBLIC_API_URL}/api/mutual/performance-heatmap/${schemeCode}`,
-      ).then((r) => r.json()),
+      ).then((r) => handleResponse(r, "performance-heatmap")),
       fetch(
         `${process.env.NEXT_PUBLIC_API_URL}/api/mutual/risk-volatility/${schemeCode}`,
-      ).then((r) => r.json()),
+      ).then((r) => handleResponse(r, "risk-volatility")),
       fetch(
         `${process.env.NEXT_PUBLIC_API_URL}/api/mutual/monte-carlo-prediction/${schemeCode}`,
-      ).then((r) => r.json()),
+      ).then((r) => handleResponse(r, "monte-carlo-prediction")),
     ])
       .then(([meta, navs, heat, risk, mc]) => {
-        setMeta(meta);
-        setNavHistory(navs);
-        setHeatmap(heat);
-        setRiskVolatility(risk);
-        setMonteCarlo(mc);
+        setMeta(meta || {});
+        setNavHistory(Array.isArray(navs) ? navs : []);
+        setHeatmap(Array.isArray(heat) ? heat : []);
+        setRiskVolatility(risk || {});
+        setMonteCarlo(mc || {});
         setLoading(false);
       })
       .catch((error) => {
-        console.error("Error:", error);
+        console.error("Error loading MF details:", error);
+        // Set empty defaults so the page doesn't crash
+        setMeta({});
+        setNavHistory([]);
+        setHeatmap([]);
+        setRiskVolatility({});
+        setMonteCarlo({});
         setLoading(false);
       });
   }, [schemeCode]);
