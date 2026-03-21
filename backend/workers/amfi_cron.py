@@ -5,6 +5,7 @@ from sqlalchemy import text, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from datetime import date
 from core.database import AsyncSessionLocal, get_db
+from core.redis import get_redis
 from models.snapshot import PortfolioSnapshot
 from models.holding import Holding
 
@@ -40,6 +41,7 @@ async def parse_and_store_navs():
     else:
         print("Scheme 119551 NOT found in AMFI file")
 
+    redis = await get_redis()
     async with AsyncSessionLocal() as db:
         count = 0
         for line in lines:
@@ -57,6 +59,8 @@ async def parse_and_store_navs():
                     VALUES (:symbol, 'mutualfund', TO_DATE(:date, 'DD-Mon-YYYY'), :price)
                     ON CONFLICT (symbol, price_date) DO UPDATE SET close_price = :price
                 """), {"symbol": code, "date": date_str, "price": nav})
+                # Update Redis with latest NAV for this scheme (1-hour TTL)
+                await redis.setex(f"nav:{code}", 3600, str(nav))
                 count += 1
             except Exception as e:
                 print(f"Error for {code}: {e}")

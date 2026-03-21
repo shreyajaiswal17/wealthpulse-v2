@@ -14,7 +14,7 @@ from api.stream import router as stream_router
 from api.analytics import router as analytics_router
 from api.market import router as market_router
 from api.ai import router as ai_router
-from workers.amfi_cron import scheduler
+from workers.amfi_cron import scheduler, parse_and_store_navs
 from workers.binance_ws import binance_price_worker
 from workers.finnhub_ws import finnhub_price_worker
 from workers.india_stocks import india_stocks_worker
@@ -51,6 +51,9 @@ async def startup():
     asyncio.create_task(finnhub_price_worker())
     asyncio.create_task(india_stocks_worker())
     scheduler.start()
+
+    # Run MF NAV refresh once at startup so Redis has nav:{code} for all MF holdings
+    asyncio.create_task(parse_and_store_navs())
 
     async def run_backfill():
         async for db in get_db():

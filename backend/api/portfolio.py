@@ -41,6 +41,8 @@ async def add_holding(
         background_tasks.add_task(ensure_stock_history, item.symbol, db)
     elif asset_type == "mutualfund":
         background_tasks.add_task(ensure_mf_history, item.symbol, db)
+        # Refresh NAVs so Redis gets nav:{schemecode} for this and other MF holdings
+        background_tasks.add_task(parse_and_store_navs)
     elif asset_type == "crypto":
         background_tasks.add_task(ensure_crypto_history, item.symbol, db)
 
