@@ -1,7 +1,12 @@
 "use client";
 import React, { useState } from "react";
 
-export default function AIDostModal({ isOpen, onClose, fundData }) {
+export default function AIDostModal({
+  isOpen,
+  onClose,
+  fundData,
+  useBackend = false,
+}) {
   const [summary, setSummary] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -12,13 +17,23 @@ export default function AIDostModal({ isOpen, onClose, fundData }) {
     setSummary("");
 
     try {
-      const response = await fetch("/api/ai/summarize", {
-        method: "POST",
+      // Determine which endpoint to use
+      const endpoint = useBackend
+        ? "/api/backend/ai/dost"
+        : "/api/ai/summarize";
+      const requestOptions = {
+        method: useBackend ? "GET" : "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ fundData }),
-      });
+      };
+
+      // Only add body for POST requests (frontend AI)
+      if (!useBackend) {
+        requestOptions.body = JSON.stringify({ fundData });
+      }
+
+      const response = await fetch(endpoint, requestOptions);
 
       if (!response.ok) {
         throw new Error("Failed to generate summary");
@@ -30,7 +45,7 @@ export default function AIDostModal({ isOpen, onClose, fundData }) {
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        
+
         const chunk = decoder.decode(value);
         setSummary((prev) => prev + chunk);
       }
@@ -55,17 +70,39 @@ export default function AIDostModal({ isOpen, onClose, fundData }) {
         {/* Header */}
         <div className="bg-gradient-to-r from-cyan-500 to-blue-600 p-6 flex justify-between items-center">
           <div className="flex items-center gap-3">
-            <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+            <svg
+              className="w-8 h-8 text-white"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"
+              />
             </svg>
-            <h2 className="text-2xl font-bold text-white">AI Dost - Your Investment Buddy</h2>
+            <h2 className="text-2xl font-bold text-white">
+              AI Dost - Your Investment Buddy
+            </h2>
           </div>
           <button
             onClick={onClose}
             className="text-white hover:bg-white/20 rounded-lg p-2 transition-colors"
           >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            <svg
+              className="w-6 h-6"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M6 18L18 6M6 6l12 12"
+              />
             </svg>
           </button>
         </div>
@@ -75,7 +112,10 @@ export default function AIDostModal({ isOpen, onClose, fundData }) {
           {loading && (
             <div className="flex flex-col items-center justify-center py-12">
               <div className="animate-spin border-4 border-cyan-400 border-t-transparent rounded-full w-12 h-12 mb-4"></div>
-              <p className="text-gray-400 text-lg">AI Dost is analyzing the fund... 🤖</p>
+              <p className="text-gray-400 text-lg">
+                AI Dost is analyzing{" "}
+                {useBackend ? "your portfolio" : "the fund"}... 🤖
+              </p>
             </div>
           )}
 

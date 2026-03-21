@@ -1,7 +1,12 @@
 "use client";
 import React, { useState } from "react";
 
-export default function AIReportModal({ isOpen, onClose, fundData }) {
+export default function AIReportModal({
+  isOpen,
+  onClose,
+  fundData,
+  useBackend = false,
+}) {
   const [report, setReport] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -12,13 +17,23 @@ export default function AIReportModal({ isOpen, onClose, fundData }) {
     setReport("");
 
     try {
-      const response = await fetch("/api/ai/generate-report", {
-        method: "POST",
+      // Determine which endpoint to use
+      const endpoint = useBackend
+        ? "/api/backend/ai/report"
+        : "/api/ai/generate-report";
+      const requestOptions = {
+        method: useBackend ? "GET" : "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ fundData }),
-      });
+      };
+
+      // Only add body for POST requests (frontend AI)
+      if (!useBackend) {
+        requestOptions.body = JSON.stringify({ fundData });
+      }
+
+      const response = await fetch(endpoint, requestOptions);
 
       if (!response.ok) {
         throw new Error("Failed to generate report");
@@ -88,7 +103,9 @@ export default function AIReportModal({ isOpen, onClose, fundData }) {
                 AI Investment Report
               </h2>
               <p className="text-purple-100 text-sm">
-                Comprehensive Analysis & Insights
+                {useBackend
+                  ? "Portfolio Analysis & Insights"
+                  : "Comprehensive Analysis & Insights"}
               </p>
             </div>
           </div>
