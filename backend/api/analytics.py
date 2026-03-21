@@ -10,12 +10,27 @@ from models.holding import Holding
 from models.price_history import PriceHistory
 from models.snapshot import PortfolioSnapshot
 from services.analytics import calc_pnl, xirr, calc_risk_metrics, monte_carlo, numpy_to_python
+from services.price_backfill import COIN_ID_TO_SYMBOL
 
 router = APIRouter(prefix="/api/analytics", tags=["Analytics"])
 
+
+def _crypto_redis_key(symbol: str) -> str:
+    """
+    Map CoinGecko-style coin id (e.g. "ethereum") to the Binance
+    Redis key written by binance_ws.py (e.g. "price:crypto:ethusdt").
+    Falls back to symbol + "usdt" if not in the mapping.
+    """
+    sym = symbol.lower()
+    binance_sym = COIN_ID_TO_SYMBOL.get(sym)
+    if binance_sym:
+        return f"price:crypto:{binance_sym}"
+    return f"price:crypto:{sym}usdt"
+
+
 REDIS_PRICE_KEYS = {
     "stock": lambda s: f"price:stock:{s.lower().replace('.', '_')}",
-    "crypto": lambda s: f"price:crypto:{s.lower()}usdt",
+    "crypto": _crypto_redis_key,
     "mutualfund": lambda s: f"nav:{s}",
 }
 
