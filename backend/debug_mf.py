@@ -21,6 +21,12 @@ async def debug():
         for row in rows:
             print(f"  symbol={row[0]}  assettype={row[1]}  buyprice={row[2]}")
 
+        # Delete holdings with buy_price = 0
+        print("\n=== DELETING holdings with buy_price = 0 ===")
+        delete_result = await db.execute(text("DELETE FROM holdings WHERE buy_price = 0"))
+        await db.commit()
+        print(f"  Deleted {delete_result.rowcount} rows")
+
     # 3) Check Redis key
     print("\n=== REDIS KEYS nav:* ===")
     keys = await redis.keys("nav:*")

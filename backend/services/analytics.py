@@ -84,6 +84,11 @@ def monte_carlo(
 
     prices = np.array(price_series)
     returns = np.diff(prices) / prices[:-1]
+
+    # guard: if returns are all zero or nan, skip simulation
+    if np.all(returns == 0) or np.any(np.isnan(returns)) or np.std(returns) == 0:
+        return {"p10": current_value, "p50": current_value, "p90": current_value, "current_value": round(current_value, 2)}
+
     mu = np.mean(returns)
     sigma = np.std(returns)
 
@@ -109,8 +114,17 @@ def numpy_to_python(obj):
     """Convert numpy types to native Python for JSON serialization."""
     if isinstance(obj, dict):
         return {k: numpy_to_python(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [numpy_to_python(v) for v in obj]
+    if isinstance(obj, float):
+        if obj != obj or obj == float('inf') or obj == float('-inf'):
+            return 0  # replace nan/inf with 0
+        return obj
     if isinstance(obj, (np.float32, np.float64)):
-        return float(obj)
+        v = float(obj)
+        if v != v or v == float('inf') or v == float('-inf'):
+            return 0
+        return v
     if isinstance(obj, (np.int32, np.int64)):
         return int(obj)
     return obj
