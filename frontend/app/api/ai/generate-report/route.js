@@ -2,13 +2,29 @@ import { NextResponse } from "next/server";
 import Groq from "groq-sdk";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
-// Initialize clients
-const groqClient = new Groq({ apiKey: process.env.GROQ_API_KEY });
-const geminiClient = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+// Lazy-initialize clients (to ensure env vars are loaded)
+let groqClient = null;
+let geminiClient = null;
+
+function getGroqClient() {
+  if (!groqClient && process.env.GROQ_API_KEY) {
+    groqClient = new Groq({ apiKey: process.env.GROQ_API_KEY });
+  }
+  return groqClient;
+}
+
+function getGeminiClient() {
+  if (!geminiClient && process.env.GEMINI_API_KEY) {
+    geminiClient = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+  }
+  return geminiClient;
+}
 
 // Helper: Create Groq stream
 async function createGroqStream(messages, options = {}) {
-  const completion = await groqClient.chat.completions.create({
+  const client = getGroqClient();
+  if (!client) throw new Error("GROQ_API_KEY not configured");
+  const completion = await client.chat.completions.create({
     model: "llama-3.3-70b-versatile",
     messages,
     stream: true,
@@ -20,13 +36,16 @@ async function createGroqStream(messages, options = {}) {
 
 // Helper: Create Gemini stream (format-normalized output)
 async function createGeminiStream(messages, options = {}) {
-  const model = geminiClient.getGenerativeModel({
+  const client = getGeminiClient();
+  if (!client) throw new Error("GEMINI_API_KEY not configured");
+  const model = client.getGenerativeModel({
     model: "gemini-2.0-flash",
   });
 
   // Convert OpenAI-style messages to Gemini format
-  let contents = messages.map(m => ({
-    role: m.role === "system" ? "user" : (m.role === "assistant" ? "model" : "user"),
+  let contents = messages.map((m) => ({
+    role:
+      m.role === "system" ? "user" : m.role === "assistant" ? "model" : "user",
     parts: [{ text: m.content }],
   }));
 
@@ -44,9 +63,7 @@ async function createGeminiStream(messages, options = {}) {
       const text = chunk.text();
       if (!text) continue;
       yield {
-        choices: [
-          { delta: { content: text } }
-        ]
+        choices: [{ delta: { content: text } }],
       };
     }
   }
@@ -79,7 +96,8 @@ export async function POST(request) {
     const { fundData } = await request.json();
 
     // Check if this is portfolio data (multiple items) or single fund data
-    const isPortfolio = fundData.portfolioItems && fundData.portfolioItems.length > 0;
+    const isPortfolio =
+      fundData.portfolioItems && fundData.portfolioItems.length > 0;
 
     let fundInfo, prompt;
 
@@ -87,36 +105,43 @@ export async function POST(request) {
       // Portfolio context - comprehensive analysis
       const stocksCount = fundData.meta?.stocks_count || 0;
       const mfCount = fundData.meta?.mutual_funds_count || 0;
-      const cryptoCount = fundData.portfolioItems?.filter(i => i.item_type === 'crypto').length || 0;
-      
+      const cryptoCount =
+        fundData.portfolioItems?.filter((i) => i.item_type === "crypto")
+          .length || 0;
+
       // Build detailed portfolio items list with all metrics
-      const itemsList = fundData.portfolioItems.map((item, idx) => {
-        const returnStr = item.risk_volatility?.annualized_return 
-          ? `${(item.risk_volatility.annualized_return * 100).toFixed(2)}%` 
-          : "N/A";
-        const volatilityStr = item.risk_volatility?.annualized_volatility 
-          ? `${(item.risk_volatility.annualized_volatility * 100).toFixed(2)}%` 
-          : "N/A";
-        const sharpeStr = item.risk_volatility?.sharpe_ratio 
-          ? item.risk_volatility.sharpe_ratio.toFixed(2) 
-          : "N/A";
-        const navStr = item.nav ? `₹${item.nav}` : "N/A";
-        
-        return `${idx + 1}. ${item.name} (${item.item_type.toUpperCase()})
-   - Symbol/Code: ${item.symbol || 'N/A'}
+      const itemsList = fundData.portfolioItems
+        .map((item, idx) => {
+          const returnStr = item.risk_volatility?.annualized_return
+            ? `${(item.risk_volatility.annualized_return * 100).toFixed(2)}%`
+            : "N/A";
+          const volatilityStr = item.risk_volatility?.annualized_volatility
+            ? `${(item.risk_volatility.annualized_volatility * 100).toFixed(2)}%`
+            : "N/A";
+          const sharpeStr = item.risk_volatility?.sharpe_ratio
+            ? item.risk_volatility.sharpe_ratio.toFixed(2)
+            : "N/A";
+          const navStr = item.nav ? `₹${item.nav}` : "N/A";
+
+          return `${idx + 1}. ${item.name} (${item.item_type.toUpperCase()})
+   - Symbol/Code: ${item.symbol || "N/A"}
    - Current Price/NAV: ${navStr}
    - Annualized Return: ${returnStr}
    - Annualized Volatility: ${volatilityStr}
    - Sharpe Ratio: ${sharpeStr}
    - Risk Category: ${item.risk_volatility?.annualized_volatility > 0.3 ? "High" : item.risk_volatility?.annualized_volatility > 0.15 ? "Medium" : "Low"}
    - Date Added: ${new Date(item.added_at).toLocaleDateString()}`;
-      }).join('\n\n');
+        })
+        .join("\n\n");
 
       // Calculate portfolio-level insights
-      const totalValue = fundData.portfolioItems.reduce((sum, item) => sum + (item.nav || 0), 0);
+      const totalValue = fundData.portfolioItems.reduce(
+        (sum, item) => sum + (item.nav || 0),
+        0,
+      );
       const avgReturn = fundData.riskVolatility?.annualized_return || 0;
       const avgVolatility = fundData.riskVolatility?.annualized_volatility || 0;
-      
+
       fundInfo = `
 COMPREHENSIVE PORTFOLIO ANALYSIS REPORT
 ========================================
@@ -221,16 +246,25 @@ Portfolio Data:
 ${fundInfo}`;
     } else {
       // Single fund/stock context
-      const currentNav = fundData.navHistory?.length > 0 
-        ? fundData.navHistory[fundData.navHistory.length - 1]?.nav 
-        : "N/A";
-      const navDisplay = currentNav !== "N/A" ? `₹${parseFloat(currentNav).toFixed(2)}` : "N/A";
+      const currentNav =
+        fundData.navHistory?.length > 0
+          ? fundData.navHistory[fundData.navHistory.length - 1]?.nav
+          : "N/A";
+      const navDisplay =
+        currentNav !== "N/A" ? `₹${parseFloat(currentNav).toFixed(2)}` : "N/A";
 
       // Calculate additional metrics
       const navHistoryLength = fundData.navHistory?.length || 0;
-      const firstNav = navHistoryLength > 0 ? parseFloat(fundData.navHistory[0]?.nav) : 0;
-      const lastNav = navHistoryLength > 0 ? parseFloat(fundData.navHistory[navHistoryLength - 1]?.nav) : 0;
-      const totalReturn = firstNav > 0 ? (((lastNav - firstNav) / firstNav) * 100).toFixed(2) : "N/A";
+      const firstNav =
+        navHistoryLength > 0 ? parseFloat(fundData.navHistory[0]?.nav) : 0;
+      const lastNav =
+        navHistoryLength > 0
+          ? parseFloat(fundData.navHistory[navHistoryLength - 1]?.nav)
+          : 0;
+      const totalReturn =
+        firstNav > 0
+          ? (((lastNav - firstNav) / firstNav) * 100).toFixed(2)
+          : "N/A";
 
       fundInfo = `
 MUTUAL FUND COMPREHENSIVE ANALYSIS REPORT
@@ -338,7 +372,7 @@ ${fundInfo}`;
       {
         temperature: 0.7,
         max_tokens: 2048,
-      }
+      },
     );
     console.log("AI provider:", provider);
 
@@ -370,7 +404,7 @@ ${fundInfo}`;
     console.error("Error in AI report generation:", error);
     return NextResponse.json(
       { error: "Failed to generate report" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
