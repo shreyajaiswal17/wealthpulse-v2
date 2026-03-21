@@ -1,5 +1,6 @@
 "use client";
 import React, { useState } from "react";
+import ReactMarkdown from "react-markdown";
 
 export default function AIDostModal({
   isOpen,
@@ -7,14 +8,14 @@ export default function AIDostModal({
   fundData,
   useBackend = false,
 }) {
-  const [summary, setSummary] = useState("");
+  const [aiResponse, setAiResponse] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
   const generateSummary = async () => {
     setLoading(true);
     setError(null);
-    setSummary("");
+    setAiResponse(null);
 
     try {
       // Determine which endpoint to use
@@ -39,15 +40,25 @@ export default function AIDostModal({
         throw new Error("Failed to generate summary");
       }
 
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
+      // For backend endpoints, parse JSON response
+      if (useBackend) {
+        const data = await response.json();
+        setAiResponse(data);
+      } else {
+        // For frontend endpoints, accumulate streaming text
+        let summary = "";
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const chunk = decoder.decode(value);
+          summary += chunk;
+        }
 
-        const chunk = decoder.decode(value);
-        setSummary((prev) => prev + chunk);
+        // Treat frontend response as plain text
+        setAiResponse({ text: summary, format: "plain" });
       }
     } catch (err) {
       setError(err.message);
@@ -57,7 +68,7 @@ export default function AIDostModal({
   };
 
   React.useEffect(() => {
-    if (isOpen && !summary && !loading) {
+    if (isOpen && !aiResponse && !loading) {
       generateSummary();
     }
   }, [isOpen]);
@@ -131,11 +142,57 @@ export default function AIDostModal({
             </div>
           )}
 
-          {summary && (
-            <div className="prose prose-invert max-w-none">
-              <div className="bg-[#232b44] rounded-lg p-6 text-white whitespace-pre-wrap leading-relaxed text-base">
-                {summary}
-              </div>
+          {aiResponse && (
+            <div className="bg-[#232b44] rounded-lg p-6 text-white">
+              {aiResponse.format === "markdown" ? (
+                <ReactMarkdown
+                  className="prose prose-invert max-w-none prose-p:m-2 prose-h1:text-xl prose-h1:font-bold prose-h1:mt-4 prose-h1:mb-2 prose-h2:text-lg prose-h2:font-bold prose-h2:mt-3 prose-h2:mb-2 prose-ul:list-disc prose-ul:pl-4 prose-li:m-1"
+                  components={{
+                    p: ({ node, ...props }) => (
+                      <p className="text-gray-100 leading-relaxed" {...props} />
+                    ),
+                    h1: ({ node, ...props }) => (
+                      <h1
+                        className="text-xl font-bold text-cyan-300 mt-4 mb-2"
+                        {...props}
+                      />
+                    ),
+                    h2: ({ node, ...props }) => (
+                      <h2
+                        className="text-lg font-bold text-cyan-400 mt-3 mb-2"
+                        {...props}
+                      />
+                    ),
+                    h3: ({ node, ...props }) => (
+                      <h3
+                        className="text-base font-semibold text-blue-300 mt-2 mb-1"
+                        {...props}
+                      />
+                    ),
+                    ul: ({ node, ...props }) => (
+                      <ul className="list-disc pl-6 my-2" {...props} />
+                    ),
+                    ol: ({ node, ...props }) => (
+                      <ol className="list-decimal pl-6 my-2" {...props} />
+                    ),
+                    li: ({ node, ...props }) => (
+                      <li className="text-gray-100 mb-1" {...props} />
+                    ),
+                    strong: ({ node, ...props }) => (
+                      <strong className="font-bold text-cyan-200" {...props} />
+                    ),
+                    em: ({ node, ...props }) => (
+                      <em className="italic text-gray-200" {...props} />
+                    ),
+                  }}
+                >
+                  {aiResponse.text}
+                </ReactMarkdown>
+              ) : (
+                <p className="text-gray-100 whitespace-pre-line leading-relaxed">
+                  {aiResponse.text}
+                </p>
+              )}
             </div>
           )}
         </div>

@@ -1,5 +1,6 @@
 "use client";
 import React, { useState } from "react";
+import ReactMarkdown from "react-markdown";
 
 export default function AIReportModal({
   isOpen,
@@ -7,14 +8,14 @@ export default function AIReportModal({
   fundData,
   useBackend = false,
 }) {
-  const [report, setReport] = useState("");
+  const [aiResponse, setAiResponse] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
   const generateReport = async () => {
     setLoading(true);
     setError(null);
-    setReport("");
+    setAiResponse(null);
 
     try {
       // Determine which endpoint to use
@@ -39,15 +40,25 @@ export default function AIReportModal({
         throw new Error("Failed to generate report");
       }
 
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
+      // For backend endpoints, parse JSON response
+      if (useBackend) {
+        const data = await response.json();
+        setAiResponse(data);
+      } else {
+        // For frontend endpoints, accumulate streaming text
+        let report = "";
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const chunk = decoder.decode(value);
+          report += chunk;
+        }
 
-        const chunk = decoder.decode(value);
-        setReport((prev) => prev + chunk);
+        // Treat frontend response as plain text
+        setAiResponse({ text: report, format: "plain" });
       }
     } catch (err) {
       setError(err.message);
@@ -57,14 +68,15 @@ export default function AIReportModal({
   };
 
   React.useEffect(() => {
-    if (isOpen && !report && !loading) {
+    if (isOpen && !aiResponse && !loading) {
       generateReport();
     }
   }, [isOpen]);
 
   const downloadReport = () => {
+    if (!aiResponse) return;
     const element = document.createElement("a");
-    const file = new Blob([report], { type: "text/plain" });
+    const file = new Blob([aiResponse.text], { type: "text/plain" });
     element.href = URL.createObjectURL(file);
     element.download = `${fundData.meta?.scheme_name || "report"}-AI-Report.txt`;
     document.body.appendChild(element);
@@ -73,7 +85,8 @@ export default function AIReportModal({
   };
 
   const copyToClipboard = () => {
-    navigator.clipboard.writeText(report);
+    if (!aiResponse) return;
+    navigator.clipboard.writeText(aiResponse.text);
     alert("Report copied to clipboard!");
   };
 
@@ -155,11 +168,84 @@ export default function AIReportModal({
             </div>
           )}
 
-          {report && (
-            <div className="prose prose-invert max-w-none">
-              <div className="bg-[#232b44] rounded-lg p-6 text-white whitespace-pre-wrap leading-relaxed text-base font-mono">
-                {report}
-              </div>
+          {aiResponse && (
+            <div className="bg-[#232b44] rounded-lg p-6 text-white">
+              {aiResponse.format === "markdown" ? (
+                <ReactMarkdown
+                  className="prose prose-invert max-w-none"
+                  components={{
+                    p: ({ node, ...props }) => (
+                      <p
+                        className="text-gray-100 leading-relaxed my-2"
+                        {...props}
+                      />
+                    ),
+                    h1: ({ node, ...props }) => (
+                      <h1
+                        className="text-2xl font-bold text-purple-300 mt-5 mb-3"
+                        {...props}
+                      />
+                    ),
+                    h2: ({ node, ...props }) => (
+                      <h2
+                        className="text-xl font-bold text-pink-300 mt-4 mb-2"
+                        {...props}
+                      />
+                    ),
+                    h3: ({ node, ...props }) => (
+                      <h3
+                        className="text-lg font-semibold text-purple-200 mt-3 mb-2"
+                        {...props}
+                      />
+                    ),
+                    h4: ({ node, ...props }) => (
+                      <h4
+                        className="text-base font-semibold text-pink-200 mt-2 mb-1"
+                        {...props}
+                      />
+                    ),
+                    ul: ({ node, ...props }) => (
+                      <ul className="list-disc pl-6 my-2" {...props} />
+                    ),
+                    ol: ({ node, ...props }) => (
+                      <ol className="list-decimal pl-6 my-2" {...props} />
+                    ),
+                    li: ({ node, ...props }) => (
+                      <li className="text-gray-100 mb-1" {...props} />
+                    ),
+                    strong: ({ node, ...props }) => (
+                      <strong className="font-bold text-pink-200" {...props} />
+                    ),
+                    em: ({ node, ...props }) => (
+                      <em className="italic text-gray-200" {...props} />
+                    ),
+                    blockquote: ({ node, ...props }) => (
+                      <blockquote
+                        className="border-l-4 border-purple-500 pl-4 my-2 italic text-gray-300"
+                        {...props}
+                      />
+                    ),
+                    code: ({ node, inline, ...props }) =>
+                      inline ? (
+                        <code
+                          className="bg-[#1a1f2e] px-2 py-1 rounded text-pink-300"
+                          {...props}
+                        />
+                      ) : (
+                        <code
+                          className="bg-[#1a1f2e] p-3 rounded block text-pink-300 overflow-x-auto"
+                          {...props}
+                        />
+                      ),
+                  }}
+                >
+                  {aiResponse.text}
+                </ReactMarkdown>
+              ) : (
+                <p className="text-gray-100 whitespace-pre-line leading-relaxed">
+                  {aiResponse.text}
+                </p>
+              )}
             </div>
           )}
         </div>
@@ -170,7 +256,7 @@ export default function AIReportModal({
             📋 Professional AI-generated investment report
           </p>
           <div className="flex gap-3">
-            {report && (
+            {aiResponse && (
               <>
                 <button
                   onClick={copyToClipboard}
