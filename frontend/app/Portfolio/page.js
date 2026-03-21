@@ -83,19 +83,19 @@ export default function PortfolioPage() {
 
         // Map backend response structure to our state
         // Backend returns: { summary: {...}, holdings: [...] }
-        // Each holding includes: id, symbol, name, assettype, quantity, buyprice, currentprice, pnl, xirr, montecarlo, risk
+        // Each holding includes: id, symbol, name, asset_type, quantity, buy_price, current_price, pnl, xirr, montecarlo, risk
         const itemsWithMetrics = analytics.holdings.map((holding) => ({
           // Map to the old item_type field name for compatibility with UI
           id: holding.id,
           symbol: holding.symbol,
           name: holding.name,
           item_type:
-            holding.assettype === "mutualfund"
+            holding.asset_type === "mutualfund"
               ? "mutual_fund"
-              : holding.assettype,
+              : holding.asset_type,
           quantity: holding.quantity,
-          buyprice: holding.buyprice,
-          currentprice: holding.currentprice,
+          buy_price: holding.buy_price,
+          current_price: holding.current_price,
           // Add computed metrics in risk_volatility structure for portfolio metric calculations
           risk_volatility: holding.risk || {},
           // Include montecarlo data
@@ -155,12 +155,12 @@ export default function PortfolioPage() {
           symbol: holding.symbol,
           name: holding.name,
           item_type:
-            holding.assettype === "mutualfund"
+            holding.asset_type === "mutualfund"
               ? "mutual_fund"
-              : holding.assettype,
+              : holding.asset_type,
           quantity: holding.quantity,
-          buyprice: holding.buyprice,
-          currentprice: holding.currentprice,
+          buy_price: holding.buy_price,
+          current_price: holding.current_price,
           risk_volatility: holding.risk || {},
           montecarlo: holding.montecarlo || {},
           _backendHolding: holding,
@@ -286,13 +286,73 @@ export default function PortfolioPage() {
                   </span>
                 </div>
 
-                <div className="flex justify-between items-center text-sm text-gray-400">
+                {/* Investment Details */}
+                <div className="space-y-3 mb-4 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Quantity:</span>
+                    <span className="text-white font-medium">
+                      {Number(item.quantity).toLocaleString("en-IN", {
+                        maximumFractionDigits: 4,
+                      })}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Buy Price:</span>
+                    <span className="text-white font-medium">
+                      ₹
+                      {Number(item.buy_price ?? 0).toLocaleString("en-IN", {
+                        maximumFractionDigits: 2,
+                      })}
+                    </span>
+                  </div>
+                  <div className="flex justify-between bg-white/10 rounded px-3 py-2">
+                    <span className="text-gray-300 font-medium">Invested:</span>
+                    <span className="text-green-400 font-bold">
+                      ₹
+                      {(
+                        Number(item.quantity ?? 0) * Number(item.buy_price ?? 0)
+                      ).toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                  {item.current_price != null && (
+                    <>
+                      <div className="flex justify-between">
+                        <span className="text-gray-400">Current Price:</span>
+                        <span className="text-white font-medium">
+                          ₹
+                          {Number(item.current_price).toLocaleString("en-IN", {
+                            maximumFractionDigits: 2,
+                          })}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-400">Current Value:</span>
+                        <span className="text-white font-medium">
+                          ₹
+                          {(
+                            Number(item.quantity ?? 0) *
+                            Number(item.current_price)
+                          ).toLocaleString("en-IN", {
+                            maximumFractionDigits: 2,
+                          })}
+                        </span>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                <div className="flex justify-between items-center text-xs text-gray-500 border-t border-white/10 pt-3">
                   <span>
-                    Added: {new Date(item.added_at).toLocaleDateString()}
+                    Added:{" "}
+                    {item._backendHolding?.created_at
+                      ? new Date(
+                          item._backendHolding.created_at,
+                        ).toLocaleDateString()
+                      : "—"}
                   </span>
                   <button
                     onClick={() => handleRemoveItem(item.id)}
-                    className="text-red-400 hover:text-red-300 transition-colors"
+                    className="text-red-400 hover:text-red-300 transition-colors font-medium"
                   >
                     Remove
                   </button>

@@ -2,7 +2,7 @@
 
 "use client";
 import React, { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import useUser from "@/lib/authClient";
 import {
   LineChart,
@@ -143,7 +143,13 @@ export default function MFDetailsPage() {
   // AI Report Modal state
   const [showAIReport, setShowAIReport] = useState(false);
   const [addingToPortfolio, setAddingToPortfolio] = useState(false);
+
+  // Portfolio form state
+  const [buyPrice, setBuyPrice] = useState("");
+  const [quantity, setQuantity] = useState(1);
+
   const { user, isSignedIn } = useUser();
+  const router = useRouter();
 
   useEffect(() => {
     setLoading(true);
@@ -287,26 +293,42 @@ export default function MFDetailsPage() {
       return;
     }
 
+    const latestNAV =
+      navHistory && navHistory.length > 0
+        ? navHistory[navHistory.length - 1]?.nav
+        : null;
+    const finalBuyPrice = buyPrice || latestNAV;
+
+    if (!finalBuyPrice || finalBuyPrice <= 0) {
+      alert("Please enter a valid buy price (NAV)");
+      return;
+    }
+
+    if (!quantity || quantity <= 0) {
+      alert("Please enter a valid quantity");
+      return;
+    }
+
     try {
       setAddingToPortfolio(true);
-      console.log("Adding to portfolio:", {
-        userId: user.sub,
-        schemeCode,
+      const buy_date = new Date().toISOString().slice(0, 10);
+      const payload = {
+        symbol: schemeCode,
         name: meta?.scheme_name || schemeCode,
-      });
+        asset_type: "mutualfund",
+        buy_price: Number(finalBuyPrice),
+        quantity: Number(quantity),
+        buy_date: buy_date,
+      };
 
-      // Using Next.js API route instead of calling FastAPI directly
-      const userId = encodeURIComponent(user.sub || "");
-      const response = await fetch(`/api/portfolio/add/${userId}`, {
+      console.log("Adding to portfolio:", payload);
+
+      const response = await fetch("/api/backend/portfolio", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          symbol: schemeCode,
-          name: meta?.scheme_name || schemeCode,
-          item_type: "mutual_fund",
-        }),
+        body: JSON.stringify(payload),
       });
 
       const responseText = await response.text();
@@ -330,6 +352,11 @@ export default function MFDetailsPage() {
       }
 
       alert("Successfully added to portfolio!");
+      setBuyPrice("");
+      setQuantity(1);
+
+      // Navigate to Portfolio page so user sees updated portfolio
+      setTimeout(() => router.push("/Portfolio"), 1000);
     } catch (error) {
       console.error("Error adding to portfolio:", error);
       alert(error.message || "Failed to add to portfolio. Please try again.");
@@ -462,6 +489,45 @@ export default function MFDetailsPage() {
                         <span className="text-white font-semibold text-right">
                           {meta?.scheme_name || "Not Available"}
                         </span>
+                      </div>
+                    </div>
+                    <div className="space-y-4 mt-6 border-t border-gray-700 pt-4">
+                      <div>
+                        <label className="block text-base mb-2">
+                          <span className="text-gray-300 font-medium">
+                            Buy Price / NAV (₹):
+                          </span>
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          placeholder={
+                            navHistory && navHistory.length > 0
+                              ? `Latest NAV: ₹${Number(navHistory[navHistory.length - 1]?.nav).toFixed(2)}`
+                              : "Enter price"
+                          }
+                          value={buyPrice}
+                          onChange={(e) => setBuyPrice(e.target.value)}
+                          className="w-full bg-[#232b44] text-white rounded-lg p-3 text-base focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-base mb-2">
+                          <span className="text-gray-300 font-medium">
+                            Units/Quantity:
+                          </span>
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={quantity}
+                          onChange={(e) =>
+                            setQuantity(parseFloat(e.target.value) || 0)
+                          }
+                          className="w-full bg-[#232b44] text-white rounded-lg p-3 text-base focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        />
                       </div>
                     </div>
                     <button

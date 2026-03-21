@@ -12,9 +12,8 @@ from services.price_backfill import ensure_stock_history, ensure_mf_history, ens
 router = APIRouter(prefix="/api/portfolio", tags=["Portfolio"])
 
 
-@router.get("/{user_id}", response_model=List[HoldingResponse])
+@router.get("", response_model=List[HoldingResponse])
 async def get_portfolio(
-    user_id: str,
     user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -24,9 +23,8 @@ async def get_portfolio(
     return result.scalars().all()
 
 
-@router.post("/add/{user_id}", response_model=HoldingResponse, status_code=201)
+@router.post("", response_model=HoldingResponse, status_code=201)
 async def add_holding(
-    user_id: str,
     item: HoldingCreate,
     background_tasks: BackgroundTasks,
     user: dict = Depends(get_current_user),
@@ -49,18 +47,13 @@ async def add_holding(
     return holding
 
 
-@router.delete("/{user_id}/{holding_id}")
+@router.delete("/{holding_id}")
 async def remove_holding(
-    user_id: str,
     holding_id: str,
-    user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
-        delete(Holding).where(
-            Holding.id == holding_id,
-            Holding.user_id == user["sub"],
-        )
+        delete(Holding).where(Holding.id == holding_id)
     )
     await db.commit()
     if result.rowcount == 0:
