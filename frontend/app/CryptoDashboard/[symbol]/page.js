@@ -162,6 +162,7 @@ export default function CryptoDetailsPage() {
   const [addingToPortfolio, setAddingToPortfolio] = useState(false);
   const [buyPrice, setBuyPrice] = useState("");
   const [quantity, setQuantity] = useState(1);
+  const [buyDate, setBuyDate] = useState("");
 
   const { user, isSignedIn } = useUser();
   const router = useRouter();
@@ -325,16 +326,20 @@ export default function CryptoDetailsPage() {
       return;
     }
 
+    if (!buyDate) {
+      alert("Please select a buy date");
+      return;
+    }
+
     try {
       setAddingToPortfolio(true);
-      const buy_date = new Date().toISOString().slice(0, 10);
       const payload = {
         symbol: symbol,
         name: meta?.name || symbol,
         asset_type: "crypto",
         buy_price: Number(finalBuyPrice),
         quantity: Number(quantity),
-        buy_date: buy_date,
+        buy_date: buyDate,
       };
 
       console.log("Adding to portfolio:", payload);
@@ -584,6 +589,21 @@ export default function CryptoDetailsPage() {
                           onChange={(e) =>
                             setQuantity(parseFloat(e.target.value) || 0)
                           }
+                          className="w-full bg-[#232b44] text-white rounded-lg p-3 text-base focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-base mb-2">
+                          <span className="text-gray-300 font-medium">
+                            Buy Date:
+                          </span>
+                        </label>
+                        <input
+                          type="date"
+                          value={
+                            buyDate || new Date().toISOString().split("T")[0]
+                          }
+                          onChange={(e) => setBuyDate(e.target.value)}
                           className="w-full bg-[#232b44] text-white rounded-lg p-3 text-base focus:outline-none focus:ring-2 focus:ring-purple-500"
                         />
                       </div>

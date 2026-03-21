@@ -22,26 +22,41 @@ def calc_pnl(buy_price: float, current_price: float, quantity: float) -> Dict:
 
 # ── XIRR ───────────────────────────────────────────────────────────────────
 
-def xirr(cashflows: List[tuple]) -> float:
+def xirr(cashflows: List[tuple]) -> float | None:
     """
-    cashflows: list of (date, amount)
-    negative = outflow (buy), positive = inflow (current value)
+    Calculate annualized IRR from cashflows.
+
+    Args:
+        cashflows: List of (date, amount) tuples.
+                   Negative = outflow (buy), Positive = inflow (current value).
+
+    Returns:
+        Annualized IRR as a percentage (e.g., 14.5 for 14.5%), rounded to 2 decimals.
+        Returns None if:
+        - Less than 2 cashflows
+        - Holding age < 30 days (insufficient history)
+        - Solver fails or no valid IRR exists
     """
     if len(cashflows) < 2:
-        return 0.0
+        return None
 
     dates = [cf[0] for cf in cashflows]
     amounts = [cf[1] for cf in cashflows]
     t0 = dates[0]
     days = [(d - t0).days for d in dates]
 
+    # If holding is too new (< 30 days old), XIRR is unreliable
+    max_age_days = max(days)
+    if max_age_days < 30:
+        return None
+
     def npv(rate):
         return sum(a / (1 + rate) ** (d / 365.0) for a, d in zip(amounts, days))
 
     try:
-        return round(brentq(npv, -0.999, 100.0) * 100, 2)
+        return round(brentq(npv, -0.999, 100.0, maxiter=100) * 100, 2)
     except Exception:
-        return 0.0
+        return None
 
 
 # ── RISK METRICS ───────────────────────────────────────────────────────────

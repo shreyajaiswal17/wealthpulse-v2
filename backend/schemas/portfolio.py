@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, model_validator, ValidationError
 from datetime import date, datetime
 from uuid import UUID
 from typing import Optional
@@ -19,6 +19,19 @@ class HoldingCreate(BaseModel):
         if isinstance(data, dict) and "item_type" in data and "asset_type" not in data:
             data["asset_type"] = data.pop("item_type")
         return data
+
+    @model_validator(mode="after")
+    def validate_buy_date(self) -> "HoldingCreate":
+        """Validate buy_date: no future dates, no dates before 2000."""
+        min_date = date(2000, 1, 1)
+        today = date.today()
+
+        if self.buy_date > today:
+            raise ValueError("Buy date cannot be in the future")
+        if self.buy_date < min_date:
+            raise ValueError("Buy date cannot be before January 1, 2000")
+
+        return self
 
 
 class HoldingResponse(BaseModel):
