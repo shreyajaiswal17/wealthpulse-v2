@@ -1,38 +1,21 @@
 import { NextResponse } from "next/server";
 
+/**
+ * DEPRECATED: This route no longer uses userId in the path.
+ * Backend now extracts user_id from JWT Authorization header.
+ *
+ * MIGRATE TO:
+ * DELETE /api/backend/portfolio/[id] - Delete a holding by ID
+ * The backend extracts the user_id from your Authorization token automatically.
+ */
+
 export async function DELETE(request, { params }) {
-  const { userId, itemId } = await params;
-
-  try {
-    console.log("Removing portfolio item:", { userId, itemId });
-
-    if (!process.env.NEXT_PUBLIC_API_URL) {
-      console.error("NEXT_PUBLIC_API_URL is not defined");
-      return NextResponse.json(
-        { detail: "API URL configuration error" },
-        { status: 500 },
-      );
-    }
-
-    const response = await fetch(
-      `${process.env.NEXT_PUBLIC_API_URL}/api/portfolio/${userId}/${itemId}`,
-      { method: "DELETE" },
-    );
-
-    if (!response.ok) {
-      const error = await response.text();
-      return NextResponse.json(
-        { detail: error || "Failed to remove item" },
-        { status: response.status },
-      );
-    }
-
-    return NextResponse.json({ message: "Item removed successfully" });
-  } catch (error) {
-    console.error("Error in portfolio delete route:", error);
-    return NextResponse.json(
-      { detail: error.message || "Internal server error" },
-      { status: 500 },
-    );
-  }
+  return NextResponse.json(
+    {
+      detail:
+        "This endpoint is deprecated. Use DELETE /api/backend/portfolio/[id] instead. The backend extracts the user_id from your Authorization token automatically.",
+      deprecated: true,
+    },
+    { status: 410 },
+  );
 }
