@@ -1,14 +1,78 @@
-import OpenAI from "openai";
 import { NextResponse } from "next/server";
+import Groq from "groq-sdk";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
-const openai = new OpenAI({
-  baseURL: 'https://openrouter.ai/api/v1',
-  apiKey: process.env.OPENROUTER_API_KEY,
-  defaultHeaders: {
-    'HTTP-Referer': 'https://newealth.com',
-    'X-Title': 'NewWealth AI',
-  },
-});
+// Initialize clients
+const groqClient = new Groq({ apiKey: process.env.GROQ_API_KEY });
+const geminiClient = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+
+// Helper: Create Groq stream
+async function createGroqStream(messages, options = {}) {
+  const completion = await groqClient.chat.completions.create({
+    model: "llama-3.3-70b-versatile",
+    messages,
+    stream: true,
+    temperature: options.temperature ?? 0.7,
+    max_tokens: options.max_tokens ?? 1024,
+  });
+  return completion;
+}
+
+// Helper: Create Gemini stream (format-normalized output)
+async function createGeminiStream(messages, options = {}) {
+  const model = geminiClient.getGenerativeModel({
+    model: "gemini-2.0-flash",
+  });
+
+  // Convert OpenAI-style messages to Gemini format
+  let contents = messages.map(m => ({
+    role: m.role === "system" ? "user" : (m.role === "assistant" ? "model" : "user"),
+    parts: [{ text: m.content }],
+  }));
+
+  const result = await model.generateContentStream({
+    contents,
+    generationConfig: {
+      temperature: options.temperature ?? 0.7,
+      maxOutputTokens: options.max_tokens ?? 1024,
+    },
+  });
+
+  // Wrap Gemini stream into async iterator matching OpenAI chunk shape
+  async function* iterator() {
+    for await (const chunk of result.stream) {
+      const text = chunk.text();
+      if (!text) continue;
+      yield {
+        choices: [
+          { delta: { content: text } }
+        ]
+      };
+    }
+  }
+
+  return iterator();
+}
+
+// Helper: Try Groq first, fallback to Gemini
+async function getModelStream(messages, options = {}) {
+  if (process.env.GROQ_API_KEY) {
+    try {
+      console.log("Using Groq (primary)");
+      const stream = await createGroqStream(messages, options);
+      return { stream, provider: "groq" };
+    } catch (err) {
+      console.warn("Groq failed, falling back to Gemini:", err.message);
+    }
+  }
+
+  if (!process.env.GEMINI_API_KEY) {
+    throw new Error("No GEMINI_API_KEY configured");
+  }
+  console.log("Using Gemini (fallback)");
+  const stream = await createGeminiStream(messages, options);
+  return { stream, provider: "gemini" };
+}
 
 export async function POST(request) {
   try {
@@ -171,19 +235,20 @@ Fund Data:
 ${fundInfo}`;
     }
 
-    const chatCompletion = await openai.chat.completions.create({
-      messages: [
+    // Get AI stream (Groq primary, Gemini fallback)
+    const { stream: chatCompletion, provider } = await getModelStream(
+      [
         {
           role: "user",
           content: prompt,
         },
       ],
-      model: "google/gemini-2.5-flash",
-      temperature: 0.8,
-      max_tokens: 1024,
-      top_p: 1,
-      stream: true,
-    });
+      {
+        temperature: 0.8,
+        max_tokens: 1024,
+      }
+    );
+    console.log("AI provider:", provider);
 
     // Create a readable stream for the response
     const encoder = new TextEncoder();
