@@ -136,7 +136,7 @@ export default function PortfolioPage() {
     }
 
     try {
-      const response = await fetch(`/api/backend/portfolio/${itemId}`, {
+      const response = await fetch(`/api/backend/portfolio/holding/${itemId}`, {
         method: "DELETE",
       });
 
@@ -219,7 +219,7 @@ export default function PortfolioPage() {
     }
 
     try {
-      const response = await fetch(`/api/backend/portfolio/${lotId}`, {
+      const response = await fetch(`/api/backend/portfolio/holding/${lotId}`, {
         method: "DELETE",
       });
 

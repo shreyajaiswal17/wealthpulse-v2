@@ -1,45 +1,28 @@
-// next.config.js
-module.exports = {
+/** @type {import('next').NextConfig} */
+const nextConfig = {
   async rewrites() {
     return [
-      // Per-asset market data (mutual funds, stocks, crypto)
+      // Catch-all rule that proxies ALL /api/backend/* calls to the backend
+      // This covers portfolio, analytics, ai, market, and all other API routes
+      {
+        source: "/api/backend/:path*",
+        destination: `${process.env.NEXT_PUBLIC_API_URL}/api/:path*`,
+      },
+      // Per-asset market data routes (also support direct /api/mutual, /api/stock, /api/crypto)
       {
         source: "/api/mutual/:path*",
-        destination: "http://localhost:8000/api/mutual/:path*", // your FastAPI mutual funds route
+        destination: `${process.env.NEXT_PUBLIC_API_URL}/api/mutual/:path*`,
       },
       {
         source: "/api/stock/:path*",
-        destination: "http://localhost:8000/api/stock/:path*", // your FastAPI stock route
+        destination: `${process.env.NEXT_PUBLIC_API_URL}/api/stock/:path*`,
       },
       {
         source: "/api/crypto/:path*",
-        destination: "http://localhost:8000/api/crypto/:path*", // your FastAPI crypto route
-      },
-      // WealthPulse v2 backend proxies (with auth headers added by /api/backend/* routes)
-      {
-        source: "/api/backend/portfolio",
-        destination: "http://localhost:8000/api/portfolio",
-      },
-      {
-        source: "/api/backend/portfolio/:id",
-        destination: "http://localhost:8000/api/portfolio/:id",
-      },
-      {
-        source: "/api/backend/analytics/portfolio",
-        destination: "http://localhost:8000/api/analytics/portfolio",
-      },
-      {
-        source: "/api/backend/ai/dost",
-        destination: "http://localhost:8000/api/ai/dost",
-      },
-      {
-        source: "/api/backend/ai/report",
-        destination: "http://localhost:8000/api/ai/report",
-      },
-      {
-        source: "/api/backend/market/:path*",
-        destination: "http://localhost:8000/api/market/:path*",
+        destination: `${process.env.NEXT_PUBLIC_API_URL}/api/crypto/:path*`,
       },
     ];
   },
 };
+
+module.exports = nextConfig;

@@ -17,8 +17,8 @@ const useDebounce = (value, delay) => {
 
 const fetchSchemes = async (search = "") => {
   const url = search
-    ? `${process.env.NEXT_PUBLIC_API_URL}/api/mutual/schemes?search=${encodeURIComponent(search)}`
-    : `${process.env.NEXT_PUBLIC_API_URL}/api/mutual/schemes`;
+    ? `/api/backend/mutual/schemes?search=${encodeURIComponent(search)}`
+    : `/api/backend/mutual/schemes`;
   const res = await fetch(url);
   if (!res.ok) return {};
   return await res.json();
@@ -67,66 +67,66 @@ export default function MFDashboardPage() {
 
   return (
     <>
-    <Navbar />
-    <section className="relative min-h-screen bg-gradient-to-b from-[#050511] via-[#0d1020] to-[#0b0b12] py-16 text-white">
-      <div className="max-w-5xl mx-auto px-9">
-        {/* Searchbar */}
-        <div className="flex justify-center mb-8 py-9 relative">
-          <input
-            ref={inputRef}
-            value={search}
-            onChange={onSearchChange}
-            type="text"
-            placeholder="Search Mutual Funds by name…"
-            className="w-full max-w-md px-5 py-3 rounded-full bg-white/10 border border-white/20 text-white focus:outline-none focus:ring-2 focus:ring-purple-600 shadow-md"
-            aria-label="Search Mutual Funds"
-          />
-          {search && (
-            <button
-              onClick={onClearSearch}
-              className="absolute right-8 top-2.5 text-white/60 hover:text-white/90 text-xl"
-              aria-label="Clear Search"
-            >
-              ×
-            </button>
+      <Navbar />
+      <section className="relative min-h-screen bg-gradient-to-b from-[#050511] via-[#0d1020] to-[#0b0b12] py-16 text-white">
+        <div className="max-w-5xl mx-auto px-9">
+          {/* Searchbar */}
+          <div className="flex justify-center mb-8 py-9 relative">
+            <input
+              ref={inputRef}
+              value={search}
+              onChange={onSearchChange}
+              type="text"
+              placeholder="Search Mutual Funds by name…"
+              className="w-full max-w-md px-5 py-3 rounded-full bg-white/10 border border-white/20 text-white focus:outline-none focus:ring-2 focus:ring-purple-600 shadow-md"
+              aria-label="Search Mutual Funds"
+            />
+            {search && (
+              <button
+                onClick={onClearSearch}
+                className="absolute right-8 top-2.5 text-white/60 hover:text-white/90 text-xl"
+                aria-label="Clear Search"
+              >
+                ×
+              </button>
+            )}
+          </div>
+
+          {loading ? (
+            <div className="flex justify-center py-12">
+              <span className="animate-spin border-4 border-purple-400 border-t-transparent rounded-full w-8 h-8"></span>
+            </div>
+          ) : noResults ? (
+            <div className="flex flex-col items-center py-16">
+              <span className="text-4xl mb-4 opacity-70">😕</span>
+              <span className="text-gray-400 text-lg">
+                No mutual funds found. Try another search!
+              </span>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-7">
+              {displayedMfs.map(([code, name]) => (
+                <div
+                  key={code}
+                  className="bg-white/5 border border-white/10 rounded-2xl p-6 shadow-lg flex flex-col hover:bg-white/10 transition-colors"
+                >
+                  <h3 className="text-lg font-semibold mb-2">{name}</h3>
+                  <div className="text-xs text-gray-300 mb-5">
+                    Scheme Code: <span className="font-mono">{code}</span>
+                  </div>
+                  <Link href={`/MFDashboard/${code}`}>
+                    <button className="inline-flex items-center gap-2 bg-gradient-to-r from-[#9b5cff] to-[#f08bd6] text-white text-sm font-semibold px-4 py-2 rounded-full shadow hover:scale-[1.03] transition-transform">
+                      View Details →
+                    </button>
+                  </Link>
+                </div>
+              ))}
+            </div>
           )}
         </div>
-
-        {loading ? (
-          <div className="flex justify-center py-12">
-            <span className="animate-spin border-4 border-purple-400 border-t-transparent rounded-full w-8 h-8"></span>
-          </div>
-        ) : noResults ? (
-          <div className="flex flex-col items-center py-16">
-            <span className="text-4xl mb-4 opacity-70">😕</span>
-            <span className="text-gray-400 text-lg">
-              No mutual funds found. Try another search!
-            </span>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-7">
-            {displayedMfs.map(([code, name]) => (
-              <div
-                key={code}
-                className="bg-white/5 border border-white/10 rounded-2xl p-6 shadow-lg flex flex-col hover:bg-white/10 transition-colors"
-              >
-                <h3 className="text-lg font-semibold mb-2">{name}</h3>
-                <div className="text-xs text-gray-300 mb-5">
-                  Scheme Code: <span className="font-mono">{code}</span>
-                </div>
-                <Link href={`/MFDashboard/${code}`}>
-                  <button className="inline-flex items-center gap-2 bg-gradient-to-r from-[#9b5cff] to-[#f08bd6] text-white text-sm font-semibold px-4 py-2 rounded-full shadow hover:scale-[1.03] transition-transform">
-                    View Details →
-                  </button>
-                </Link>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-      <div className="absolute left-0 right-0 bottom-0 h-48 bg-gradient-to-t from-[#0b0710]/80 to-transparent" />
-      <Chatbot />
-    </section>
+        <div className="absolute left-0 right-0 bottom-0 h-48 bg-gradient-to-t from-[#0b0710]/80 to-transparent" />
+        <Chatbot />
+      </section>
     </>
   );
 }

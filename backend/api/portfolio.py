@@ -73,17 +73,26 @@ async def add_holding(
     return holding
 
 
-@router.delete("/{holding_id}")
+@router.delete("/holding/{holding_id}")
 async def remove_holding(
     holding_id: str,
+    user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    # Verify the holding belongs to the current user
     result = await db.execute(
-        delete(Holding).where(Holding.id == holding_id)
+        select(Holding).where(Holding.id == holding_id, Holding.user_id == user["sub"])
+    )
+    holding = result.scalars().one_or_none()
+
+    if not holding:
+        raise HTTPException(status_code=404, detail="Holding not found")
+
+    # Delete the holding
+    result = await db.execute(
+        delete(Holding).where(Holding.id == holding_id, Holding.user_id == user["sub"])
     )
     await db.commit()
-    if result.rowcount == 0:
-        raise HTTPException(status_code=404, detail="Holding not found")
     return {"message": "Removed"}
 
 

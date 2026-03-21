@@ -152,11 +152,11 @@ export default function StockDetailsPage() {
     (async () => {
       try {
         const endpoints = {
-          profile: `${process.env.NEXT_PUBLIC_API_URL}/api/stock/profile/${symbol}`,
-          history: `${process.env.NEXT_PUBLIC_API_URL}/api/stock/history/${symbol}`,
-          heatmap: `${process.env.NEXT_PUBLIC_API_URL}/api/stock/performance-heatmap/${symbol}`,
-          risk: `${process.env.NEXT_PUBLIC_API_URL}/api/stock/risk-volatility/${symbol}`,
-          montecarlo: `${process.env.NEXT_PUBLIC_API_URL}/api/stock/monte-carlo-prediction/${symbol}`,
+          profile: `/api/backend/stock/profile/${symbol}`,
+          history: `/api/backend/stock/history/${symbol}`,
+          heatmap: `/api/backend/stock/performance-heatmap/${symbol}`,
+          risk: `/api/backend/stock/risk-volatility/${symbol}`,
+          montecarlo: `/api/backend/stock/monte-carlo-prediction/${symbol}`,
         };
 
         const results = {};
@@ -200,7 +200,7 @@ export default function StockDetailsPage() {
     const id = setTimeout(async () => {
       try {
         const res = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/api/stock/search-stocks?q=${encodeURIComponent(stock1Query)}`,
+          `/api/backend/stock/search-stocks?q=${encodeURIComponent(stock1Query)}`,
         );
         const data = await res.json();
         setStock1Suggestions(data || []);
@@ -220,7 +220,7 @@ export default function StockDetailsPage() {
     const id = setTimeout(async () => {
       try {
         const res = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/api/stock/search-stocks?q=${encodeURIComponent(stock2Query)}`,
+          `/api/backend/stock/search-stocks?q=${encodeURIComponent(stock2Query)}`,
         );
         const data = await res.json();
         setStock2Suggestions(data || []);
@@ -240,7 +240,7 @@ export default function StockDetailsPage() {
     (async () => {
       try {
         const res = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/api/stock/profile/${selectedStock1.symbol}`,
+          `/api/backend/stock/profile/${selectedStock1.symbol}`,
         );
         const data = await res.json();
         setStock1Data({ profile: data });
@@ -256,7 +256,7 @@ export default function StockDetailsPage() {
     (async () => {
       try {
         const res = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/api/stock/profile/${selectedStock2.symbol}`,
+          `/api/backend/stock/profile/${selectedStock2.symbol}`,
         );
         const data = await res.json();
         setStock2Data({ profile: data });

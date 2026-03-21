@@ -172,29 +172,19 @@ export default function CryptoDetailsPage() {
     // TODO: Replace with actual API calls once your friend provides the endpoints
     // For now, setting empty/mock data
     Promise.all([
-      fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/crypto/coin-details/${symbol}`,
-      )
+      fetch(`/api/backend/crypto/coin-details/${symbol}`)
         .then((r) => r.json())
         .catch(() => ({})),
-      fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/crypto/historical-price/${symbol}`,
-      )
+      fetch(`/api/backend/crypto/historical-price/${symbol}`)
         .then((r) => r.json())
         .catch(() => []),
-      fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/crypto/performance-heatmap/${symbol}`,
-      )
+      fetch(`/api/backend/crypto/performance-heatmap/${symbol}`)
         .then((r) => r.json())
         .catch(() => []),
-      fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/crypto/risk-volatility/${symbol}`,
-      )
+      fetch(`/api/backend/crypto/risk-volatility/${symbol}`)
         .then((r) => r.json())
         .catch(() => ({})),
-      fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/crypto/monte-carlo-prediction/${symbol}`,
-      )
+      fetch(`/api/backend/crypto/monte-carlo-prediction/${symbol}`)
         .then((r) => r.json())
         .catch(() => ({})),
     ])
@@ -223,7 +213,7 @@ export default function CryptoDetailsPage() {
     const timeoutId = setTimeout(async () => {
       try {
         const response = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/api/crypto/coins?search=${encodeURIComponent(crypto1Query)}`,
+          `/api/backend/crypto/coins?search=${encodeURIComponent(crypto1Query)}`,
         );
         const data = await response.json();
         setCrypto1Suggestions(data || []);
@@ -247,7 +237,7 @@ export default function CryptoDetailsPage() {
     const timeoutId = setTimeout(async () => {
       try {
         const response = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/api/crypto/coins?search=${encodeURIComponent(crypto2Query)}`,
+          `/api/backend/crypto/coins?search=${encodeURIComponent(crypto2Query)}`,
         );
         const data = await response.json();
         setCrypto2Suggestions(data || []);
@@ -266,7 +256,7 @@ export default function CryptoDetailsPage() {
     (async () => {
       try {
         const res = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/api/crypto/coin-details/${selectedCrypto1.id}`,
+          `/api/backend/crypto/coin-details/${selectedCrypto1.id}`,
         );
         const data = await res.json();
         setCrypto1Data({ meta: data });
@@ -282,7 +272,7 @@ export default function CryptoDetailsPage() {
     (async () => {
       try {
         const res = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/api/crypto/coin-details/${selectedCrypto2.id}`,
+          `/api/backend/crypto/coin-details/${selectedCrypto2.id}`,
         );
         const data = await res.json();
         setCrypto2Data({ meta: data });

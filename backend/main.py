@@ -1,5 +1,6 @@
 # WealthPulse API Entry Point
 import asyncio
+import os
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -30,44 +31,83 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # ── CORS ──────────────────────────────────────────────────────────────────────
-# FRONTEND_URL is read from the .env file so you can change it without code edits.
-# Add more origins to this list if needed (e.g. preview deployments).
+# CORS origins list with explicit Vercel URL and FRONTEND_URL from .env.
+# CORSMiddleware must be added BEFORE other middleware and BEFORE startup event.
+origins = [
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "https://wealthpulse-nu.vercel.app",
+    os.getenv("FRONTEND_URL", ""),
+]
+# Remove empty strings in case FRONTEND_URL is not set
+origins = [o for o in origins if o]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        settings.FRONTEND_URL,
-    ],
+    allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type"],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
 @app.on_event("startup")
 async def startup():
-    await init_redis()
-    asyncio.create_task(binance_price_worker())
-    asyncio.create_task(finnhub_price_worker())
-    asyncio.create_task(india_stocks_worker())
-    scheduler.start()
+    # Redis — non-fatal if down
+    try:
+        await init_redis()
+        print("Redis connected.")
+    except Exception as e:
+        print(f"WARNING: Redis unavailable on startup: {e}")
+        print("App will continue without caching. Live prices will be unavailable.")
 
-    # Run MF NAV refresh once at startup so Redis has nav:{code} for all MF holdings
-    asyncio.create_task(parse_and_store_navs())
+    # Binance worker
+    try:
+        asyncio.create_task(binance_price_worker())
+    except Exception as e:
+        print(f"WARNING: Binance worker failed to start: {e}")
 
-    async def run_backfill():
-        async for db in get_db():
-            await backfill_stock_history(db)
-            break
+    # Finnhub worker
+    try:
+        asyncio.create_task(finnhub_price_worker())
+    except Exception as e:
+        print(f"WARNING: Finnhub worker failed to start: {e}")
 
-    asyncio.create_task(run_backfill())
+    # India stocks worker
+    try:
+        asyncio.create_task(india_stocks_worker())
+    except Exception as e:
+        print(f"WARNING: India stocks worker failed to start: {e}")
 
-    async def run_crypto_backfill():
-        async for db in get_db():
-            await backfill_crypto_history(db)
-            break
+    # AMFI scheduler and MF NAV refresh
+    try:
+        scheduler.start()
+        asyncio.create_task(parse_and_store_navs())
+    except Exception as e:
+        print(f"WARNING: AMFI scheduler failed to start: {e}")
 
-    asyncio.create_task(run_crypto_backfill())
+    # Stock history backfill
+    try:
+        async def run_backfill():
+            async for db in get_db():
+                await backfill_stock_history(db)
+                break
+
+        asyncio.create_task(run_backfill())
+    except Exception as e:
+        print(f"WARNING: Stock history backfill failed to start: {e}")
+
+    # Crypto history backfill
+    try:
+        async def run_crypto_backfill():
+            async for db in get_db():
+                await backfill_crypto_history(db)
+                break
+
+        asyncio.create_task(run_crypto_backfill())
+    except Exception as e:
+        print(f"WARNING: Crypto history backfill failed to start: {e}")
+
     print("WealthPulse v2 started")
 
 
