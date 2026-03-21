@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete, text
 from typing import List
@@ -7,41 +7,59 @@ from core.security import get_current_user
 from models.holding import Holding
 from schemas.portfolio import HoldingCreate, HoldingResponse
 from workers.amfi_cron import parse_and_store_navs
+from services.price_backfill import ensure_stock_history, ensure_mf_history, ensure_crypto_history
 
 router = APIRouter(prefix="/api/portfolio", tags=["Portfolio"])
 
-@router.get("", response_model=List[HoldingResponse])
+
+@router.get("/{user_id}", response_model=List[HoldingResponse])
 async def get_portfolio(
-    user=Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    user_id: str,
+    user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
         select(Holding).where(Holding.user_id == user["sub"])
     )
     return result.scalars().all()
 
-@router.post("", response_model=HoldingResponse)
+
+@router.post("/add/{user_id}", response_model=HoldingResponse, status_code=201)
 async def add_holding(
+    user_id: str,
     item: HoldingCreate,
-    user=Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    background_tasks: BackgroundTasks,
+    user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     holding = Holding(**item.model_dump(), user_id=user["sub"])
     db.add(holding)
     await db.commit()
     await db.refresh(holding)
+
+    # Trigger lazy backfill in background — non-blocking
+    asset_type = item.asset_type or item.item_type  # handle legacy field
+    if asset_type == "stock":
+        background_tasks.add_task(ensure_stock_history, item.symbol, db)
+    elif asset_type == "mutualfund":
+        background_tasks.add_task(ensure_mf_history, item.symbol, db)
+    elif asset_type == "crypto":
+        background_tasks.add_task(ensure_crypto_history, item.symbol, db)
+
     return holding
 
-@router.delete("/{holding_id}")
+
+@router.delete("/{user_id}/{holding_id}")
 async def remove_holding(
+    user_id: str,
     holding_id: str,
-    user=Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
         delete(Holding).where(
             Holding.id == holding_id,
-            Holding.user_id == user["sub"]
+            Holding.user_id == user["sub"],
         )
     )
     await db.commit()
@@ -60,19 +78,17 @@ async def test_nav_refresh():
 async def backfill_nav(scheme_code: str, db: AsyncSession = Depends(get_db)):
     import httpx
     from datetime import datetime
-    from sqlalchemy import text
 
     async with httpx.AsyncClient() as client:
         r = await client.get(f"https://api.mfapi.in/mf/{scheme_code}", timeout=15)
 
     nav_history = r.json().get("data", [])
-
     rows = []
     for entry in nav_history:
         try:
-            date = datetime.strptime(entry["date"], "%d-%m-%Y").date()
+            date_val = datetime.strptime(entry["date"], "%d-%m-%Y").date()
             nav = float(entry["nav"])
-            rows.append({"s": scheme_code, "d": date, "p": nav})
+            rows.append({"s": scheme_code, "d": date_val, "p": nav})
         except Exception:
             continue
 
@@ -83,7 +99,7 @@ async def backfill_nav(scheme_code: str, db: AsyncSession = Depends(get_db)):
                 VALUES (:s, 'mutualfund', :d, :p)
                 ON CONFLICT (symbol, "price_date") DO NOTHING
             """),
-            rows
+            rows,
         )
         await db.commit()
 

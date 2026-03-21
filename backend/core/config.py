@@ -3,14 +3,24 @@ from pydantic import model_validator
 
 
 class Settings(BaseSettings):
+    # ── Database (PostgreSQL via asyncpg) ─────────────────────────────────────
     DATABASE_URL: str
     DATABASE_URL_SYNC: str = ""
+
+    # ── Cache ─────────────────────────────────────────────────────────────────
     REDIS_URL: str
-    AUTH0_DOMAIN: str
-    AUTH0_AUDIENCE: str = "wealthpulse-local"
+
+    # ── Auth0 ─────────────────────────────────────────────────────────────────
+    AUTH0_DOMAIN: str                          # e.g. dev-qt0cqogfgwebky55.us.auth0.com
+    AUTH0_AUDIENCE: str = "wealthpulse-local"  # set to AUTH0_CLIENT_ID in production
+
+    # ── External APIs ─────────────────────────────────────────────────────────
     GROQ_API_KEY: str
     GEMINI_API_KEY: str
     FINNHUB_API_KEY: str
+
+    # ── CORS ──────────────────────────────────────────────────────────────────
+    FRONTEND_URL: str = "https://wealthpulse.vercel.app"  # override with your real Vercel URL
 
     @model_validator(mode="after")
     def derive_sync_url(self):
