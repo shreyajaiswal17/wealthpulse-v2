@@ -11,9 +11,13 @@ export function getBackendAuthHeaders(request) {
     const cookieHeader = request.headers.get("cookie") || "";
 
     if (!cookieHeader) {
-      console.warn("[backendAuth] No cookie header present");
+      console.warn("[backendAuth] CRITICAL: No cookie header present at all");
       return null;
     }
+
+    console.log(
+      `[backendAuth] Cookie header found, length: ${cookieHeader.length}`,
+    );
 
     // Split cookies properly - handles values with = signs inside
     const cookies = {};
@@ -25,12 +29,18 @@ export function getBackendAuthHeaders(request) {
       cookies[key] = val;
     });
 
+    console.log("[backendAuth] Parsed cookies, keys:", Object.keys(cookies));
+
     const rawSession = cookies["appSession"];
     if (!rawSession) {
-      console.warn("[backendAuth] appSession cookie not found");
-      console.warn("[backendAuth] Available cookies:", Object.keys(cookies));
+      console.warn(
+        "[backendAuth] CRITICAL: appSession cookie not found. Available:",
+        Object.keys(cookies),
+      );
       return null;
     }
+
+    console.log(`[backendAuth] Found appSession, length: ${rawSession.length}`);
 
     // Decode URI encoding if present
     let sessionStr = rawSession;
@@ -53,25 +63,33 @@ export function getBackendAuthHeaders(request) {
       return null;
     }
 
-    // Prefer id_token (standard JWT), fallback to access_token
-    const token = sessionData.id_token || sessionData.access_token;
+    console.log(
+      "[backendAuth] Parsed session, keys:",
+      Object.keys(sessionData),
+    );
+
+    // Prefer access_token (has audience claim), fallback to id_token
+    const token = sessionData.access_token || sessionData.id_token;
     if (!token) {
       console.warn(
-        "[backendAuth] No token found in session. Keys:",
+        "[backendAuth] CRITICAL: No token found in session. Keys:",
         Object.keys(sessionData),
       );
       return null;
     }
 
+    const tokenType = sessionData.access_token ? "access_token" : "id_token";
     console.log(
-      "[backendAuth] Token extracted successfully, type:",
-      sessionData.id_token ? "id_token" : "access_token",
+      `[backendAuth] Token extracted successfully, type: ${tokenType}, length: ${token.length}`,
     );
 
-    return {
+    const headers = {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
     };
+
+    console.log("[backendAuth] Returning auth headers with Bearer token");
+    return headers;
   } catch (err) {
     console.error("[backendAuth] Unexpected error:", err.message);
     return null;
@@ -123,18 +141,9 @@ export async function forwardToBackend(request, backendUrl, options = {}) {
       ...(body !== undefined && { body }),
     };
 
-    console.log(`[forwardToBackend] ${method} ${backendUrl}`);
-
-    // Debug logging for DELETE requests to trace 401 issues
-    if (method.toUpperCase() === "DELETE") {
-      const authHeader = headers["Authorization"] || headers.authorization;
-      console.log("[forwardToBackend] DELETE debug:", {
-        backendUrl,
-        hasAuth: !!authHeader,
-        contentType: headers["Content-Type"],
-        method,
-      });
-    }
+    console.log(
+      `[forwardToBackend] ${method} ${backendUrl} with Authorization: ${authHeaders.Authorization ? "Bearer token present" : "MISSING"}`,
+    );
 
     const response = await fetch(backendUrl, fetchOptions);
     console.log(`[forwardToBackend] Response: ${response.status}`);

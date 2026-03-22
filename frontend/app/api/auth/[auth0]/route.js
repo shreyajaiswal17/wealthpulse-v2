@@ -20,6 +20,7 @@ export async function GET(request, { params }) {
         `${process.env.AUTH0_BASE_URL}/api/auth/callback`,
       );
       loginUrl.searchParams.set("scope", "openid profile email");
+      loginUrl.searchParams.set("audience", "https://wealthpulse/api");
 
       if (screenHint === "signup") {
         loginUrl.searchParams.set("screen_hint", "signup");
