@@ -1,10 +1,11 @@
 import json
 import httpx
+import asyncio
 import numpy as np
 import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from core.database import get_db
 from core.redis import get_redis
 from models.price_history import PriceHistory
@@ -12,6 +13,61 @@ from services.price_backfill import ensure_mf_history
 
 router = APIRouter(prefix="/api/mutual", tags=["MF Compat"])
 MFAPI_BASE = "https://api.mfapi.in"
+
+# Shared HTTP client with connection pooling
+_client = None
+
+async def get_http_client():
+    global _client
+    if _client is None:
+        limits = httpx.Limits(max_connections=10, max_keepalive_connections=10)
+        _client = httpx.AsyncClient(limits=limits)
+    return _client
+
+async def _fetch_with_retry(url: str, timeout: float = 20, max_retries: int = 3):
+    """Fetch URL with exponential backoff retry logic"""
+    client = await get_http_client()
+    for attempt in range(max_retries):
+        try:
+            r = await client.get(url, timeout=timeout)
+            if r.status_code == 200:
+                return r
+            elif attempt < max_retries - 1:
+                wait_time = 2 ** attempt  # 1s, 2s, 4s
+                print(f"⚠️ MF API returned {r.status_code}, retrying in {wait_time}s...")
+                await asyncio.sleep(wait_time)
+        except httpx.ReadTimeout:
+            if attempt < max_retries - 1:
+                wait_time = 2 ** attempt
+                print(f"⚠️ MF API timeout, retrying in {wait_time}s...")
+                await asyncio.sleep(wait_time)
+            else:
+                raise
+    raise HTTPException(status_code=503, detail="External API unavailable after retries")
+
+async def _get_schemes_from_amfi_fallback(db: AsyncSession, search: str = "") -> dict:
+    """Fallback to fetch schemes from database (populated by AMFI worker)"""
+    try:
+        result = await db.execute(
+            select(
+                PriceHistory.symbol.distinct(),
+            ).where(PriceHistory.asset_type == "mutualfund")
+        )
+        scheme_codes = [row[0] for row in result.fetchall()]
+
+        # Create a minimal scheme map from available codes
+        # In real scenario, you might want to store scheme names in DB or cache
+        schemes = {code: f"Scheme {code}" for code in scheme_codes}
+
+        # Apply search filter
+        if search:
+            schemes = {k: v for k, v in schemes.items() if search.lower() in v.lower() or search.lower() in k.lower()}
+
+        print(f"🔄 Returning {len(schemes)} schemes from AMFI fallback data")
+        return schemes
+    except Exception as e:
+        print(f"❌ Failed to fetch AMFI fallback schemes: {e}")
+        return {}
 
 
 async def _get_nav_series(scheme_code: str, db: AsyncSession, redis) -> list[dict]:
@@ -123,22 +179,29 @@ def _monte_carlo(df: pd.DataFrame) -> dict:
 # ── Endpoints ──────────────────────────────────────────────────────────────────
 
 @router.get("/schemes")
-async def get_schemes(search: str = "", redis=Depends(get_redis)):
+async def get_schemes(search: str = "", redis=Depends(get_redis), db: AsyncSession = Depends(get_db)):
     cache_key = f"mf:schemes:{search.lower()[:50]}"
     cached = await redis.get(cache_key)
     if cached:
         return json.loads(cached)
-    async with httpx.AsyncClient() as client:
-        r = await client.get(f"{MFAPI_BASE}/mf", timeout=15)
-        if r.status_code != 200:
-            return {}
-    all_schemes = {item["schemeCode"]: item["schemeName"] for item in r.json()}
-    result = (
-        {k: v for k, v in all_schemes.items() if search.lower() in v.lower()}
-        if search else all_schemes
-    )
-    await redis.setex(cache_key, 3600, json.dumps(result))
-    return result
+
+    try:
+        r = await _fetch_with_retry(f"{MFAPI_BASE}/mf")
+        all_schemes = {item["schemeCode"]: item["schemeName"] for item in r.json()}
+        result = (
+            {k: v for k, v in all_schemes.items() if search.lower() in v.lower()}
+            if search else all_schemes
+        )
+        await redis.setex(cache_key, 3600, json.dumps(result))
+        return result
+    except Exception as e:
+        print(f"❌ Failed to fetch schemes from MFAPI: {e}")
+        print(f"📦 Falling back to AMFI data from database...")
+        # Fallback to AMFI data stored in database
+        result = await _get_schemes_from_amfi_fallback(db, search)
+        if result:
+            await redis.setex(cache_key, 1800, json.dumps(result))  # Cache for 30 min
+        return result
 
 
 @router.get("/scheme-details/{scheme_code}")
@@ -147,8 +210,7 @@ async def get_scheme_details(scheme_code: str, redis=Depends(get_redis)):
     cached = await redis.get(cache_key)
     if cached:
         return json.loads(cached)
-    async with httpx.AsyncClient() as client:
-        r = await client.get(f"{MFAPI_BASE}/mf/{scheme_code}", timeout=10)
+    r = await _fetch_with_retry(f"{MFAPI_BASE}/mf/{scheme_code}", timeout=20)
     if r.status_code != 200:
         raise HTTPException(status_code=404, detail="Scheme not found")
     full = r.json()
