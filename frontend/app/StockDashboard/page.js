@@ -127,7 +127,7 @@ export default function StockDashboard() {
           </div>
         </div>
       </section>
-      <Chatbot />
+      <Chatbot currentPage="stocks" />
     </>
   );
 }

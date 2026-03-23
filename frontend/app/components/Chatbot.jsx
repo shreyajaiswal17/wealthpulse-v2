@@ -2,31 +2,11 @@
 
 import { useState } from "react";
 
-const Chatbot = ({ selectedFund }) => {
+const Chatbot = ({ selectedFund, currentPage = "home", selectedItem }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [webSearchEnabled, setWebSearchEnabled] = useState(true);
-  
-  // Format AI response text into clean numbered points
-  const formatResponse = (text) => {
-    // Remove any <think> tags and their content
-    text = text.replace(/<think>.*?<\/think>/gs, "");
-    
-    // Split into lines and clean up
-    const lines = text.split('\n')
-      .map(line => line.trim())
-      .filter(line => line);
-      
-    // Ensure proper numbering
-    return lines.map((line, index) => {
-      // If line already starts with a number, leave it
-      if (/^\d+\./.test(line)) return line;
-      // Otherwise, add number
-      return `${index + 1}. ${line}`;
-    }).join('\n');
-  };
 
   const handleSendMessage = async () => {
     if (!input.trim() || loading) return;
@@ -36,9 +16,7 @@ const Chatbot = ({ selectedFund }) => {
     setInput("");
     setLoading(true);
 
-    const prompt = selectedFund
-      ? `Context: Discussing ${selectedFund.name} (${selectedFund.code}).\nQuestion: ${input}\n\nProvide a clear, concise analysis or advice about this investment, focusing on the specific query. Format the response in 2-5 key points. ${webSearchEnabled ? 'Use current market data and recent information when available.' : ''}`
-      : `Question: ${input}\n\nProvide general investment guidance or mutual fund advice, formatted in 2-5 key points. Focus on education and clarity. ${webSearchEnabled ? 'Include recent market trends and current information when relevant.' : ''}`;
+    const prompt = input;
 
     try {
       const response = await fetch("/api/chat", {
@@ -48,7 +26,8 @@ const Chatbot = ({ selectedFund }) => {
         },
         body: JSON.stringify({ 
           prompt,
-          enableWebSearch: webSearchEnabled 
+          currentPage,
+          selectedItem
         }),
       });
 
@@ -83,17 +62,7 @@ const Chatbot = ({ selectedFund }) => {
         });
       }
 
-      // Format the response into clean numbered points
-      const cleanedResponse = formatResponse(botResponse);
 
-      // Update with final formatted response
-      setMessages((prev) => {
-        const newMessages = [...prev];
-        if (newMessages[newMessages.length - 1]?.role === "assistant") {
-          newMessages[newMessages.length - 1].content = cleanedResponse;
-        }
-        return newMessages;
-      });
 
     } catch (error) {
       console.error("Chat error:", error);
@@ -146,47 +115,18 @@ const Chatbot = ({ selectedFund }) => {
           <div className="flex justify-between items-center p-4 bg-linear-to-r from-[#0d1020] to-[#0b0b12] rounded-t-xl border-b border-gray-700">
             <div className="flex items-center gap-3">
               <h3 className="text-white font-semibold">Investment Assistant</h3>
-              {webSearchEnabled && (
-                <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-500/20 text-green-400 text-xs font-medium rounded-full">
-                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9v-9m0 0V3m-9 9a9 9 0 019-9" />
-                  </svg>
-                  Live Data
-                </span>
-              )}
             </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setWebSearchEnabled(!webSearchEnabled)}
-                className={`flex items-center gap-1 px-2 py-1 text-xs font-medium rounded transition-colors ${
-                  webSearchEnabled 
-                    ? 'bg-blue-500/20 text-blue-400 hover:bg-blue-500/30' 
-                    : 'bg-gray-500/20 text-gray-400 hover:bg-gray-500/30'
-                }`}
-                title={webSearchEnabled ? "Disable web search" : "Enable web search"}
-              >
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-                Web
-              </button>
-              <button
-                onClick={() => setIsOpen(false)}
-                className="text-gray-400 hover:text-white transition-colors"
-              >
-                ✕
-              </button>
-            </div>
+            <button
+              onClick={() => setIsOpen(false)}
+              className="text-gray-400 hover:text-white transition-colors"
+            >
+              ✕
+            </button>
           </div>
           <div className="flex-1 p-4 overflow-y-auto bg-[#181f31] text-white">
             {messages.length === 0 ? (
               <p className="text-gray-400 text-sm">
-                Ask me about {selectedFund ? selectedFund.name : "investments"}!
-                {webSearchEnabled && (
-                  <span className="block mt-1 text-xs text-green-400">
-                    📡 Live market data enabled
-                  </span>
-                )}
+                Ask me about {selectedItem ? selectedItem : currentPage === "home" ? "investments and how to use WealthPulse" : currentPage === "stocks" ? "the stock market" : currentPage === "mutual-funds" ? "mutual funds" :currentPage === "crypto" ? "crypto" : currentPage === "courses" ? "financial courses" : "anything you want to know about WealthPulse"}!
               </p>
             ) : (
               messages.map((msg, i) => (

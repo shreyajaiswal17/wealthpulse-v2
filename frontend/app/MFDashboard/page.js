@@ -125,7 +125,7 @@ export default function MFDashboardPage() {
           )}
         </div>
         <div className="absolute left-0 right-0 bottom-0 h-48 bg-gradient-to-t from-[#0b0710]/80 to-transparent" />
-        <Chatbot />
+        <Chatbot currentPage="mutual-funds" />
       </section>
     </>
   );

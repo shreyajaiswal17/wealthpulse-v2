@@ -1210,12 +1210,7 @@ export default function MFDetailsPage() {
         />
 
         {/* Chatbot */}
-        <Chatbot
-          selectedFund={{
-            name: meta?.scheme_name || schemeCode,
-            code: schemeCode,
-          }}
-        />
+        <Chatbot currentPage="fund-detail" selectedItem={schemeCode} />
       </section>
     </>
   );
