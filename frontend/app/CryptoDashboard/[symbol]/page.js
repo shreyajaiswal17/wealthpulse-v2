@@ -18,6 +18,7 @@ import {
   Area,
 } from "recharts";
 import Navbar from "../../components/Navbar";
+import Chatbot from "../../components/Chatbot";
 import useUser from "@/lib/authClient";
 
 // Utility functions
@@ -379,6 +380,7 @@ export default function CryptoDetailsPage() {
   return (
     <>
       <Navbar />
+      <Chatbot currentPage="crypto-detail" selectedItem={symbol} />
       <section className="min-h-screen py-12 px-2 bg-gradient-to-b from-[#050511] via-[#0d1020] to-[#0b0b12] text-white">
         <div className="max-w-7xl mx-auto grid gap-6">
           {loading ? (

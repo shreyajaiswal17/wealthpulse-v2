@@ -1145,12 +1145,7 @@ export default function StockDetailsPage() {
               />
 
               {/* Chatbot */}
-              <Chatbot
-                selectedFund={{
-                  name: profile?.longName || profile?.companyName || symbol,
-                  code: symbol,
-                }}
-              />
+              <Chatbot currentPage="stock-detail" selectedItem={symbol} />
             </>
           )}
         </div>

@@ -22,7 +22,7 @@ export default function Home() {
       <Footer />
 
       {/* Chatbot floating button */}
-      <Chatbot selectedFund={selectedFund} />
+      <Chatbot currentPage="home" />
     </main>
   );
 }
