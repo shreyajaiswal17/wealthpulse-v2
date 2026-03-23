@@ -1,5 +1,6 @@
 import json
 import httpx
+import asyncio
 import numpy as np
 import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -14,6 +15,42 @@ router = APIRouter(prefix="/api/crypto", tags=["Crypto Compat"])
 COINGECKO_BASE = "https://api.coingecko.com/api/v3"
 FAMOUS_IDS = ["bitcoin", "ethereum", "solana", "binancecoin",
               "cardano", "dogecoin", "ripple", "tron", "avalanche-2", "polkadot"]
+
+
+async def _get_crypto_price(coin_id: str, redis) -> float | None:
+    """
+    Fetch crypto price with Binance → CoinGecko fallback.
+    First tries Binance price from Redis, then queries CoinGecko API.
+    """
+    # Try Binance price from Redis (populated by binance_ws.py)
+    binance_sym = COIN_ID_TO_SYMBOL.get(coin_id)
+    if binance_sym:
+        live = await redis.get(f"price:crypto:{binance_sym}")
+        if live:
+            return float(live)
+
+    # Fallback to CoinGecko
+    try:
+        cache_key = f"crypto:price:{coin_id}"
+        cached = await redis.get(cache_key)
+        if cached:
+            return float(cached)
+
+        async with httpx.AsyncClient(timeout=10) as client:
+            r = await client.get(
+                f"{COINGECKO_BASE}/simple/price",
+                params={"ids": coin_id, "vs_currencies": "usd"},
+            )
+        if r.status_code == 200:
+            data = r.json()
+            price = data.get(coin_id, {}).get("usd")
+            if price:
+                await redis.setex(cache_key, 300, str(price))  # 5min cache
+                return float(price)
+    except Exception as e:
+        print(f"⚠️ CoinGecko fallback failed for {coin_id}: {e}")
+
+    return None
 
 
 async def _get_price_series(coin_id: str, db: AsyncSession, redis) -> list[dict]:
@@ -86,12 +123,27 @@ def _monte_carlo(df: pd.DataFrame) -> dict:
     sims[:, 0] = last_price
     for t in range(1, days):
         sims[:, t] = sims[:, t - 1] * (1 + np.random.normal(mu, sigma, num_simulations))
+
+    # Generate simulation paths (4 sample paths)
+    sim_paths = [
+        {"name": f"Simulation {i + 1}",
+         "data": [{"day": d, "value": float(sims[i, d])} for d in range(0, days, 5)]}
+        for i in range(4)
+    ]
+
+    # Generate historical predicted (mean of all simulations)
+    historical_predicted = [
+        {"day": d, "value": float(np.mean(sims[:, d]))} for d in range(0, days, 5)
+    ]
+
     return {
         "expected_price": float(np.mean(sims[:, -1])),
         "probability_positive_return": float(np.mean(sims[:, -1] > last_price) * 100),
         "lower_bound_5th_percentile": float(np.percentile(sims[:, -1], 5)),
         "upper_bound_95th_percentile": float(np.percentile(sims[:, -1], 95)),
         "last_price": last_price,
+        "simulation_paths": sim_paths,
+        "historical_predicted": historical_predicted,
     }
 
 
@@ -132,13 +184,11 @@ async def get_famous(redis=Depends(get_redis)):
     cached = await redis.get(cache_key)
     if cached:
         data = json.loads(cached)
-        # Always overlay fresh Binance prices
+        # Always overlay fresh prices (Binance → CoinGecko fallback)
         for item in data:
-            binance_sym = COIN_ID_TO_SYMBOL.get(item["id"])
-            if binance_sym:
-                live = await redis.get(f"price:crypto:{binance_sym}")
-                if live:
-                    item["current_price"] = float(live)
+            price = await _get_crypto_price(item["id"], redis)
+            if price:
+                item["current_price"] = price
         return data
 
     async with httpx.AsyncClient() as client:
@@ -153,11 +203,11 @@ async def get_famous(redis=Depends(get_redis)):
         return []
     result = []
     for c in r.json():
-        live = await redis.get(f"price:crypto:{COIN_ID_TO_SYMBOL.get(c['id'], '')}")
+        price = await _get_crypto_price(c["id"], redis)
         result.append({
             "id": c["id"], "symbol": c["symbol"], "name": c["name"],
             "image": c.get("image"),
-            "current_price": float(live) if live else c.get("current_price"),
+            "current_price": price if price else c.get("current_price"),
             "market_cap": c.get("market_cap"),
             "market_cap_rank": c.get("market_cap_rank"),
         })
@@ -171,16 +221,14 @@ async def get_coin_details(coin_id: str, redis=Depends(get_redis)):
     cached = await redis.get(cache_key)
     if cached:
         data = json.loads(cached)
-        binance_sym = COIN_ID_TO_SYMBOL.get(coin_id)
-        if binance_sym:
-            live = await redis.get(f"price:crypto:{binance_sym}")
-            if live:
-                data["current_price"] = float(live)
+        price = await _get_crypto_price(coin_id, redis)
+        if price:
+            data["current_price"] = price
         return data
 
     async with httpx.AsyncClient() as client:
         r = await client.get(f"{COINGECKO_BASE}/coins/{coin_id}", timeout=15)
-    if not r.ok:
+    if not r.is_success:
         raise HTTPException(status_code=404, detail="Coin not found")
     raw = r.json()
     market = raw.get("market_data", {})
@@ -198,22 +246,25 @@ async def get_coin_details(coin_id: str, redis=Depends(get_redis)):
         return d
 
     result = {
-        "id": raw.get("id"), "symbol": raw.get("symbol"), "name": raw.get("name"),
+        "id": raw.get("id"),
+        "symbol": raw.get("symbol"),
+        "name": raw.get("name"),
         "description": _get(raw, "description", "en") or "",
         "image": _get(raw, "image", "large"),
         "current_price": _get(market, "current_price", "usd"),
         "market_cap": _get(market, "market_cap", "usd"),
-        "ath": _get(market, "ath", "usd"), "atl": _get(market, "atl", "usd"),
+        "total_volume": _get(market, "total_volume", "usd"),
+        "ath": _get(market, "ath", "usd"),
+        "atl": _get(market, "atl", "usd"),
         "high_24h": _get(market, "high_24h", "usd"),
         "low_24h": _get(market, "low_24h", "usd"),
         "price_change_percentage_24h": _get(market, "price_change_percentage_24h_in_currency", "usd"),
         "price_change_percentage_1y": _get(market, "price_change_percentage_1y_in_currency", "usd"),
+        "circulating_supply": market.get("circulating_supply"),
     }
-    binance_sym = COIN_ID_TO_SYMBOL.get(coin_id)
-    if binance_sym:
-        live = await redis.get(f"price:crypto:{binance_sym}")
-        if live:
-            result["current_price"] = float(live)
+    price = await _get_crypto_price(coin_id, redis)
+    if price:
+        result["current_price"] = price
     await redis.setex(cache_key, 3600, json.dumps(result))
     return result
 

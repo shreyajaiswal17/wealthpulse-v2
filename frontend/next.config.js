@@ -1,5 +1,13 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  images: {
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "coin-images.coingecko.com",
+      },
+    ],
+  },
   async rewrites() {
     return [
       // Per-asset market data routes (also support direct /api/mutual, /api/stock, /api/crypto)

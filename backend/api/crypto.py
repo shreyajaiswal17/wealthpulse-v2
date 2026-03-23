@@ -6,7 +6,7 @@ from core.database import get_db
 from core.redis import get_redis
 from models.price_history import PriceHistory
 from services.analytics import calc_risk_metrics, monte_carlo, numpy_to_python
-import httpx, json
+import httpx, json, asyncio
 
 router = APIRouter(prefix="/api/crypto", tags=["Crypto"])
 
@@ -14,9 +14,43 @@ COINGECKO = "https://api.coingecko.com/api/v3"
 
 
 async def _get_price(symbol: str, redis) -> float | None:
+    """Get crypto price from Binance Redis cache, fallback to CoinGecko API"""
+    # Try Binance price from Redis first
     key = f"price:crypto:{symbol.lower()}usdt"
     val = await redis.get(key)
-    return float(val) if val else None
+    if val:
+        return float(val)
+
+    # Fallback to CoinGecko
+    try:
+        # Map symbol to CoinGecko ID (e.g., btc -> bitcoin)
+        coin_id_map = {
+            "btc": "bitcoin", "eth": "ethereum", "sol": "solana",
+            "bnb": "binancecoin", "ada": "cardano", "doge": "dogecoin",
+            "xrp": "ripple", "trx": "tron", "avax": "avalanche-2"
+        }
+        coin_id = coin_id_map.get(symbol[:3].lower(), symbol.lower())
+
+        cache_key = f"crypto:price:cg:{coin_id}"
+        cached = await redis.get(cache_key)
+        if cached:
+            return float(cached)
+
+        async with httpx.AsyncClient(timeout=10) as client:
+            r = await client.get(
+                f"{COINGECKO}/simple/price",
+                params={"ids": coin_id, "vs_currencies": "usd"},
+            )
+        if r.status_code == 200:
+            data = r.json()
+            price = data.get(coin_id, {}).get("usd")
+            if price:
+                await redis.setex(cache_key, 300, str(price))  # 5min cache
+                return float(price)
+    except Exception as e:
+        print(f"⚠️ CoinGecko fallback failed for {symbol}: {e}")
+
+    return None
 
 
 async def _get_price_series(symbol: str, db: AsyncSession) -> list[float]:
@@ -31,12 +65,17 @@ async def _get_price_series(symbol: str, db: AsyncSession) -> list[float]:
 
 
 @router.get("/famous")
-async def get_famous_coins():
-    redis = await get_redis()
+async def get_famous_coins(redis=Depends(get_redis)):
     cache_key = "crypto:famous"
     cached = await redis.get(cache_key)
     if cached:
-        return json.loads(cached)
+        data = json.loads(cached)
+        # Always overlay fresh prices with fallback
+        for coin in data:
+            price = await _get_price(coin["symbol"], redis)
+            if price:
+                coin["current_price"] = price
+        return data
 
     famous_ids = [
         "bitcoin", "ethereum", "solana", "binancecoin",
@@ -57,15 +96,20 @@ async def get_famous_coins():
     if not r.is_success:
         return []
 
-    coins = [
-        {
+    coins = []
+    for c in r.json():
+        coin = {
             "id": c["id"], "symbol": c["symbol"], "name": c["name"],
             "image": c.get("image"), "current_price": c.get("current_price"),
             "market_cap": c.get("market_cap"),
             "market_cap_rank": c.get("market_cap_rank"),
         }
-        for c in r.json()
-    ]
+        # Overlay fresh price with fallback
+        price = await _get_price(c["symbol"], redis)
+        if price:
+            coin["current_price"] = price
+        coins.append(coin)
+
     await redis.setex(cache_key, 300, json.dumps(coins))  # 5min cache
     return coins
 
@@ -108,12 +152,16 @@ async def get_coins(search: str = Query(default="")):
 
 
 @router.get("/coin-details/{coin_id}")
-async def get_coin_details(coin_id: str):
-    redis = await get_redis()
+async def get_coin_details(coin_id: str, redis=Depends(get_redis)):
     cache_key = f"crypto:detail:{coin_id}"
     cached = await redis.get(cache_key)
     if cached:
-        return json.loads(cached)
+        data = json.loads(cached)
+        # Always overlay fresh price with fallback
+        price = await _get_price(coin_id, redis)
+        if price:
+            data["current_price"] = price
+        return data
 
     async with httpx.AsyncClient(timeout=10) as client:
         r = await client.get(f"{COINGECKO}/coins/{coin_id}")
@@ -142,6 +190,10 @@ async def get_coin_details(coin_id: str):
         "price_change_percentage_24h": safeget(market, "price_change_percentage_24h_in_currency", "usd"),
         "circulating_supply": market.get("circulating_supply"),
     }
+    # Overlay fresh price with fallback
+    price = await _get_price(coin_id, redis)
+    if price:
+        result["current_price"] = price
     await redis.setex(cache_key, 300, json.dumps(result))
     return result
 

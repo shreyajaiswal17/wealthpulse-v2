@@ -170,35 +170,85 @@ export default function CryptoDetailsPage() {
 
   useEffect(() => {
     setLoading(true);
-    // TODO: Replace with actual API calls once your friend provides the endpoints
-    // For now, setting empty/mock data
     Promise.all([
       fetch(`/api/backend/crypto/coin-details/${symbol}`)
-        .then((r) => r.json())
-        .catch(() => ({})),
+        .then((r) => {
+          if (!r.ok) {
+            console.error(`coin-details failed: ${r.status}`);
+            return {};
+          }
+          return r.json();
+        })
+        .catch((e) => {
+          console.error("coin-details error:", e);
+          return {};
+        }),
       fetch(`/api/backend/crypto/historical-price/${symbol}`)
-        .then((r) => r.json())
-        .catch(() => []),
+        .then((r) => {
+          if (!r.ok) {
+            console.error(`historical-price failed: ${r.status}`);
+            return [];
+          }
+          return r.json();
+        })
+        .catch((e) => {
+          console.error("historical-price error:", e);
+          return [];
+        }),
       fetch(`/api/backend/crypto/performance-heatmap/${symbol}`)
-        .then((r) => r.json())
-        .catch(() => []),
+        .then((r) => {
+          if (!r.ok) {
+            console.error(`performance-heatmap failed: ${r.status}`);
+            return [];
+          }
+          return r.json();
+        })
+        .catch((e) => {
+          console.error("performance-heatmap error:", e);
+          return [];
+        }),
       fetch(`/api/backend/crypto/risk-volatility/${symbol}`)
-        .then((r) => r.json())
-        .catch(() => ({})),
+        .then((r) => {
+          if (!r.ok) {
+            console.error(`risk-volatility failed: ${r.status}`);
+            return {};
+          }
+          return r.json();
+        })
+        .catch((e) => {
+          console.error("risk-volatility error:", e);
+          return {};
+        }),
       fetch(`/api/backend/crypto/monte-carlo-prediction/${symbol}`)
-        .then((r) => r.json())
-        .catch(() => ({})),
+        .then((r) => {
+          if (!r.ok) {
+            console.error(`monte-carlo-prediction failed: ${r.status}`);
+            return {};
+          }
+          return r.json();
+        })
+        .catch((e) => {
+          console.error("monte-carlo-prediction error:", e);
+          return {};
+        }),
     ])
       .then(([metaData, prices, heat, risk, mc]) => {
+        console.log("Crypto data loaded:", {
+          metaData,
+          pricesCount: prices?.length,
+          heatmapCount: heat?.length,
+          risk,
+          mc,
+        });
         setMeta(metaData);
-        setPriceHistory(prices);
-        setHeatmap(heat);
-        setRiskVolatility(risk);
-        setMonteCarlo(mc);
+        setPriceHistory(prices || []);
+        setHeatmap(heat || []);
+        setRiskVolatility(risk || {});
+        setMonteCarlo(mc || {});
         setLoading(false);
       })
       .catch((error) => {
-        console.error("Error:", error);
+        console.error("Error loading crypto data:", error);
         setLoading(false);
       });
   }, [symbol]);
